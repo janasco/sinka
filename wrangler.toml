@@ -1,0 +1,48 @@
+# Sinka (sinks): Gmail inbox replicator at the edge.
+# No tunnel, no LAN box. Worker fronts sinka.example.com,
+# singleton container runs the existing IMAP poller (src/index.js :8788),
+# D1 replaces data/seen.json.
+name = "sinka"
+main = "worker.js"
+compatibility_date = "2026-09-22"
+workers_dev = false
+
+# Serve sinka.example.com from the Worker.
+# After first deploy, add this route in Dashboard or via API:
+#   pattern sinka.example.com/* -> script sinka
+# Keep the Cloudflare Access Email OTP app on this hostname (unchanged).
+
+[[containers]]
+class_name = "ReplicatorContainer"
+image = "./Dockerfile"
+max_instances = 1
+
+[[durable_objects.bindings]]
+class_name = "ReplicatorContainer"
+name = "REPLICATOR"
+
+[[migrations]]
+new_sqlite_classes = ["ReplicatorContainer"]
+tag = "v1"
+
+# Plain (non-secret) config. Secrets go via `wrangler secret put ...`
+# (GMAIL_USER, GMAIL_APP_PASSWORD, DEST_SINKS, CLOUDFLARE_API_TOKEN, ...).
+[vars]
+FORWARD_LIST = "team1@example.com,team2@example.com,team3@example.com,team4@example.com,team5@example.com,team6@example.com,team7@example.com,team8@example.com,team9@example.com,team10@example.com"
+POLL_INTERVAL_MS = "300000"
+LOOKBACK_HOURS = "24"
+PORT = "8788"
+DATA_DIR = "./data"
+DRY_RUN = "0"
+CLOUDFLARE_ACCOUNT_ID = "REPLACE_ME_CLOUDFLARE_ACCOUNT_ID"
+D1_DATABASE_ID = "REPLACE_ME_D1_DATABASE_ID"
+
+# D1 dedupe store (replaces seen.json).
+[[d1_databases]]
+binding = "SEEN_DB"
+database_name = "sinka-seen"
+database_id = "REPLACE_ME_D1_DATABASE_ID"
+
+# Cron wakes the singleton for a poll (matches POLL_INTERVAL_MS=300000).
+[triggers]
+crons = ["*/5 * * * *"]

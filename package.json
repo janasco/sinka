@@ -1,0 +1,28 @@
+{
+  "name": "sinka",
+  "version": "1.0.0",
+  "description": "Sinka (sinks): 24/7 replicator polling you@example.com via IMAP and appending copies into team Gmail inboxes. Served privately at edge via Cloudflare Containers + Access Email OTP.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "poll-once": "node src/index.js --once",
+    "check": "node --check src/index.js && node --check src/mail.js && node --check src/store.js && node --check src/store_d1.js && node --check worker.js",
+    "d1:schema": "wrangler d1 execute sinka-seen --remote --file=./schema.sql"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.0.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^8.3.0",
+    "imapflow": "^1.0.162",
+    "mailparser": "^3.9.28"
+  },
+  "devDependencies": {
+    "wrangler": "^4.136.1"
+  }
+}

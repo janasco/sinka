@@ -1,0 +1,17 @@
+[Unit]
+Description=sinka Gmail replicator UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/sinka
+EnvironmentFile=/opt/sinka/.env
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/sinka/replicator.log
+StandardError=append:/opt/sinka/replicator.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+# Tunnel example: public hostname sinka.example.com -> local replicator UI.
+# Replace <TUNNEL_ID> after `cloudflared tunnel create sinka`.
+tunnel: <TUNNEL_ID>
+credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: sinka.example.com
+    service: http://localhost:8788
+  - service: http_status:404
