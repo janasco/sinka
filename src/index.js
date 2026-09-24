@@ -269,6 +269,12 @@ footer{margin-top:2rem}
 .spark i.hot{background:var(--ok);opacity:1}
 .grp{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:.5rem 0 .2rem}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:1rem;text-align:center;color:var(--mut);font-size:.82rem}
+.hero{display:flex;align-items:center;gap:.7rem;border:1px solid var(--line);border-radius:10px;padding:.8rem 1rem;margin:.6rem 0;background:var(--card)}
+.hero .face{font-size:1.6rem;line-height:1}
+.hero .t{font-size:1rem;font-weight:600}
+.hero .s{font-size:.8rem;color:var(--mut)}
+.hero.ok{border-color:var(--ok)}.hero.warn{border-color:var(--warn)}.hero.err{border-color:var(--err)}
+.help{font-size:.78rem;color:var(--mut);margin:.3rem 0 0}
 @media (prefers-reduced-motion:reduce){.conduit.live .pkt{animation:none}.srcdot{animation:none}button:hover:not(:disabled),.tile:hover{transform:none}}
 details summary{cursor:pointer;font-size:.82rem}
 </style>
@@ -276,25 +282,28 @@ details summary{cursor:pointer;font-size:.82rem}
 <header><h1>sinka</h1><span class="sub">IMAP replicator · <code>${escHtml(cfg.gmailUser)}</code> → <b>${cfg.forwardList.length}</b> inboxes</span></header>
 <div class="badges"><span class="badge ok">imap append</span><span class="badge" id="b-sinks">sinks: ${cfg.sinks.length}</span>${cfg.dryRun ? '<span class="badge warn">DRY RUN</span>' : '<span class="badge ok">live</span>'}</div>
 <div id="alerts"></div>
+<div class="hero ok" id="hero"><span class="face" id="hero-face">●</span><div><div class="t" id="hero-t">Starting up…</div><div class="s" id="hero-s">First check runs in a few seconds.</div></div></div>
+<section class="card"><h2>Pipeline <span class="mut" id="d-count"></span></h2><div class="pipe"><div class="srcrow"><span class="srcdot" id="srcdot"></span><span>Source</span><span class="v">${escHtml(cfg.gmailUser)}</span><span class="mut" id="pipe-state">listening</span></div><div class="conduit" id="conduit" title="source → sinks"><span class="pkt"></span></div><div id="dests">${destHtml}</div></div><p class="mut">Green = receiving copies · gray = paused (-) · amber = needs a password · red = password failed, fix it then Send test copy.</p></section>
 <section class="card"><h2>Status <span class="mut" id="upd"></span></h2>
 <div class="grid">
-<div class="card"><div class="k">Last poll</div><div class="v" id="c-last">—</div><div class="s" id="c-last-s"></div></div>
-<div class="card"><div class="k">Fetched</div><div class="v" id="c-fetched">—</div><div class="s">last poll</div></div>
-<div class="card"><div class="k">Replicated</div><div class="v" id="c-repl">—</div><div class="s">last poll</div></div>
-<div class="card"><div class="k">Skipped</div><div class="v" id="c-skip">—</div><div class="s">last poll</div></div>
-<div class="card"><div class="k">Seen IDs</div><div class="v" id="c-seen">—</div><div class="s">dedupe store</div></div>
-<div class="card"><div class="k">Interval</div><div class="v" id="c-int">—</div><div class="s" id="c-up"></div></div>
+<div class="card"><div class="k">Last check</div><div class="v" id="c-last">—</div><div class="s" id="c-last-s"></div></div>
+<div class="card"><div class="k">New mail</div><div class="v" id="c-fetched">—</div><div class="s">found in source inbox</div></div>
+<div class="card hero-metric"><div class="k">Copied</div><div class="v" id="c-repl">—</div><div class="s">filed into team inboxes</div></div>
+<div class="card mini"><div class="k">Skipped</div><div class="v" id="c-skip">—</div><div class="s">already filed / auto-replies</div></div>
+<div class="card mini"><div class="k">Tracked</div><div class="v" id="c-seen">—</div><div class="s">messages remembered</div></div>
+<div class="card mini"><div class="k">Check every</div><div class="v" id="c-int">—</div><div class="s" id="c-up"></div></div>
 </div>
 <div class="row"><button class="ghost" id="btn-refresh">Refresh</button><span class="mut">auto-refresh in <b id="cd">30</b>s</span></div>
 </section>
 <section class="card"><h2>Actions</h2>
-<div class="row"><button id="btn-poll">Poll now</button><button class="ghost" id="btn-base">Baseline unseen (no forward)</button></div>
+<div class="row"><button id="btn-poll">Check now</button><button class="ghost" id="btn-base">Skip backlog</button></div>
+<p class="help">Check now looks for new mail immediately. Skip backlog marks everything currently unread as read without copying — use after holidays or big backlogs.</p>
 <div class="row" style="margin-top:.6rem"><input type="text" id="inp-to" placeholder="test address" value="${escHtml(cfg.forwardList[0] || '')}"><button class="ghost" id="btn-test">Send test copy</button></div>
-<div class="row" style="margin-top:.6rem"><input type="password" id="inp-token" placeholder="Admin token (only if ADMIN_TOKEN is set)"><span class="mut">sent as Bearer header</span></div>
+<p class="help">Sends one labeled test message to every active inbox — also re-enables an inbox after you fix its password.</p>
+<div class="row" style="margin-top:.6rem"><input type="password" id="inp-token" placeholder="Admin token"><span class="mut">paste once per visit, enables the buttons above</span></div>
 <div id="result" hidden></div>
 </section>
-<section class="card"><h2>Last poll details</h2><div id="details"><div class="empty">No messages in last poll — pipeline idle.</div></div></section>
-<section class="card"><h2>Pipeline <span class="mut" id="d-count"></span></h2><div class="pipe"><div class="srcrow"><span class="srcdot" id="srcdot"></span><span>Source</span><span class="v">${escHtml(cfg.gmailUser)}</span><span class="mut" id="pipe-state">listening</span></div><div class="conduit" id="conduit" title="source → sinks"><span class="pkt"></span></div><div id="dests">${destHtml}</div></div><p class="mut">Green = receiving copies · gray = disabled (-) · amber = no App Password yet · red = auto-disabled, fix password then Send test copy to re-enable.</p></section>
+<section class="card"><h2>Latest mail</h2><div id="details"><div class="empty">No messages in the last check — pipeline idle.</div></div></section>
 <footer><p class="mut">Protected by Cloudflare Access (Email OTP, only ${escHtml(cfg.gmailUser)}). Do not expose this port directly. API: <code>GET /api/status</code> · <code>POST /api/poll-now</code> · <code>POST /api/baseline</code> · <code>POST /api/test-forward</code></p></footer>
 </div>
 <script>
@@ -339,6 +348,14 @@ document.getElementById('c-int').textContent=humanMs(d.pollIntervalMs);
 document.getElementById('c-up').textContent=d.startedAt?('up since '+new Date(d.startedAt).toLocaleString()):'';
 document.getElementById('b-sinks').textContent='sinks: '+(d.sinksConfigured!=null?d.sinksConfigured:'?');
 renderDests(d);
+var hero=document.getElementById('hero'),hf=document.getElementById('hero-face'),ht=document.getElementById('hero-t'),hs=document.getElementById('hero-s');
+if(hero){var cls='ok',face='●',t='Flowing normally',s='New mail is being copied to active inboxes.';
+if(d.setupNeeded){cls='err';face='✕';t='Setup needed';s=d.setupNeeded;}
+else if(r.error){cls='err';face='✕';t='Last check failed';s=h(r.error)+' — retrying automatically with backoff.';}
+else if(d.autoDisabledSinks&&d.autoDisabledSinks.length){cls='warn';face='◐';t=d.autoDisabledSinks.length+' inbox(es) need attention';s='Password failed — fix it, then Send test copy.';}
+else if(!d.sinksConfigured){cls='warn';face='◐';t='No active inboxes';s='Add App Passwords to start copying.';}
+else if(!d.lastPollAt){cls='warn';face='◌';t='Starting up…';s='First check runs in a few seconds.';}
+hero.className='hero '+cls;hf.textContent=face;ht.textContent=t;hs.textContent=s;}
 var al=[];
 if(d.setupNeeded)al.push('<div class="alert err"><b>Setup needed:</b> '+h(d.setupNeeded)+'</div>');
 if(!d.sinksConfigured)al.push('<div class="alert warn"><b>Not replicating:</b> no sink is active. Add per-inbox App Passwords to DEST_SINKS in .env.</div>');
@@ -348,7 +365,7 @@ if(r.error)al.push('<div class="alert err"><b>Last poll failed ('+h(r.reason||'?
 if(d.consecutiveErrors)al.push('<div class="alert warn"><b>Backing off:</b> '+d.consecutiveErrors+' consecutive error(s) — polls paused longer between retries.</div>');
 document.getElementById('alerts').innerHTML=al.join('');
 var det=document.getElementById('details');
-if(!r.details||!r.details.length){det.innerHTML='<div class="empty">No messages in last poll — pipeline idle.</div>';return;}
+if(!r.details||!r.details.length){det.innerHTML='<div class="empty">No messages in the last check — pipeline idle.</div>';return;}
 var rows=r.details.map(function(m){
 var res=m.results||[],ok=res.filter(function(x){return x.ok;}).length;
 var errs=res.filter(function(x){return !x.ok;}).map(function(x){return h(x.to+': '+(x.error||x.skipped||'?'));});
@@ -356,7 +373,7 @@ var per=res.map(function(x){return '<li>'+h(x.to)+' — '+(x.ok?('ok'+(x.via?' v
 return '<tr><td><code>'+h(String(m.messageId||'').slice(0,40))+'</code></td><td>'+h(m.from||'')+'</td><td>'+h(m.subject||'')+'</td>'+
 '<td><details><summary>'+ok+'/'+res.length+' ok</summary><ul>'+per+'</ul>'+(errs.length?'<div>'+errs.join('<br>')+'</div>':'')+'</details></td></tr>';
 }).join('');
-det.innerHTML='<table><thead><tr><th>Message-ID</th><th>From</th><th>Subject</th><th>Copies</th></tr></thead><tbody>'+rows+'</tbody></table>';
+det.innerHTML='<table><thead><tr><th>Message</th><th>From</th><th>Subject</th><th>Copies</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function refresh(){return api('/api/status').then(function(d){render(d);countdown=30;document.getElementById('cd').textContent=countdown;}).catch(function(e){document.getElementById('alerts').innerHTML='<div class="alert err"><b>Status unreachable:</b> '+h(e.message||e)+'</div>';});}
 document.getElementById('btn-refresh').onclick=function(){setBusy(true);refresh().finally(function(){setBusy(false);});};
