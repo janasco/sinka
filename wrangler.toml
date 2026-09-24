@@ -25,23 +25,20 @@ name = "REPLICATOR"
 new_sqlite_classes = ["ReplicatorContainer"]
 tag = "v1"
 
-# Plain (non-secret) config. Secrets go via `wrangler secret put ...`
-# (GMAIL_USER, GMAIL_APP_PASSWORD, DEST_SINKS, CLOUDFLARE_API_TOKEN, ...).
+# Plain (non-secret) config. Anything identifying (inbox lists, account
+# and database IDs) goes via `wrangler secret put ...` instead:
+# GMAIL_USER, GMAIL_APP_PASSWORD, DEST_SINKS, FORWARD_LIST,
+# CLOUDFLARE_ACCOUNT_ID, D1_DATABASE_ID, CLOUDFLARE_API_TOKEN, ADMIN_TOKEN.
 [vars]
-FORWARD_LIST = "team1@example.com,team2@example.com,team3@example.com,team4@example.com,team5@example.com,team6@example.com,team7@example.com,team8@example.com,team9@example.com,team10@example.com"
 POLL_INTERVAL_MS = "300000"
 LOOKBACK_HOURS = "24"
 PORT = "8788"
 DATA_DIR = "./data"
 DRY_RUN = "0"
-CLOUDFLARE_ACCOUNT_ID = "REPLACE_ME_CLOUDFLARE_ACCOUNT_ID"
-D1_DATABASE_ID = "REPLACE_ME_D1_DATABASE_ID"
 
-# D1 dedupe store (replaces seen.json).
-[[d1_databases]]
-binding = "SEEN_DB"
-database_name = "sinka-seen"
-database_id = "REPLACE_ME_D1_DATABASE_ID"
+# NOTE: no [[d1_databases]] binding on purpose — the container reaches D1
+# over the REST API (src/store_d1.js) using the secret IDs above, so the
+# Worker needs no D1 binding and deploys stay free of real identifiers.
 
 # Cron wakes the singleton for a poll (matches POLL_INTERVAL_MS=300000).
 [triggers]
