@@ -206,22 +206,22 @@ app.get('/', (_req, res) => {
   const sinkUsers = new Set(cfg.sinks.filter((s) => s.enabled !== false).map((s) => s.user));
   const disUsers = new Set(cfg.sinks.filter((s) => s.enabled === false).map((s) => s.user));
   const autoUsers = new Set(getAutoDisabled());
-  const chip = (a, cls) => `<code class="${cls}">${escHtml(a)}</code>`;
-  const on = cfg.forwardList.filter((a) => sinkUsers.has(a) && !autoUsers.has(a)).map((a) => chip(a, 'on')).join(' ');
-  const auto = cfg.forwardList.filter((a) => autoUsers.has(a)).map((a) => chip(a, 'auto')).join(' ');
-  const off = cfg.forwardList.filter((a) => disUsers.has(a)).map((a) => chip(a, 'off')).join(' ');
-  const miss = cfg.forwardList.filter((a) => !sinkUsers.has(a) && !disUsers.has(a)).map((a) => chip(a, 'miss')).join(' ');
-  const destHtml = `${on ? `<div class="grp">Active (${sinkUsers.size - autoUsers.size}) — receiving copies</div><div class="dests">${on}</div>` : ''}`
-    + `${auto ? `<div class="grp">Auto-disabled — wrong or revoked password?</div><div class="dests">${auto}</div>` : ''}`
-    + `${off ? `<div class="grp">Disabled — kept, prefixed with -</div><div class="dests">${off}</div>` : ''}`
-    + `${miss ? `<div class="grp">No App Password yet — skipped</div><div class="dests">${miss}</div>` : ''}`;
+  const tile = (a, cls) => { const short = String(a).split('@')[0]; return `<div class="tile ${cls}" title="${escHtml(a)}"><div class="t-name">${escHtml(short)}</div><div class="t-count">0</div><div class="spark">${'<i></i>'.repeat(12)}</div></div>`; };
+  const on = cfg.forwardList.filter((a) => sinkUsers.has(a) && !autoUsers.has(a)).map((a) => tile(a, 'on')).join('');
+  const auto = cfg.forwardList.filter((a) => autoUsers.has(a)).map((a) => tile(a, 'auto')).join('');
+  const off = cfg.forwardList.filter((a) => disUsers.has(a)).map((a) => tile(a, 'off')).join('');
+  const miss = cfg.forwardList.filter((a) => !sinkUsers.has(a) && !disUsers.has(a)).map((a) => tile(a, 'miss')).join('');
+  const destHtml = `${on ? `<div class="grp">Active (${sinkUsers.size - autoUsers.size}) — receiving copies</div><div class="tiles">${on}</div>` : ''}`
+    + `${auto ? `<div class="grp">Auto-disabled — wrong or revoked password?</div><div class="tiles">${auto}</div>` : ''}`
+    + `${off ? `<div class="grp">Disabled — kept, prefixed with -</div><div class="tiles">${off}</div>` : ''}`
+    + `${miss ? `<div class="grp">No App Password yet — skipped</div><div class="tiles">${miss}</div>` : ''}`;
   res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>sinka · replicator dashboard</title>
 <style>
-:root{color-scheme:dark;--bg:#0B0F19;--card:#141B2D;--ink:#e2e8f0;--mut:#94A3B8;--line:#1F293D;--ok:#34D399;--warn:#FBBF24;--err:#F87171;--acc:#38BDF8;--lav:#A78BFA}
-@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f8fafc;--card:#fff;--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--ok:#15803d;--warn:#b45309;--err:#b91c1c;--acc:#0284c7;--lav:#7c3aed}}
-*{box-sizing:border-box}body{font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:0 1rem 3rem;font-size:.875rem}
-.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+:root{color-scheme:dark;--bg:#05070B;--card:#0E121A;--ink:#FFFFFF;--mut:#64748B;--silver:#E2E8F0;--line:#1A2333;--hover:#141B26;--ok:#34D399;--warn:#FBBF24;--err:#F87171;--acc:#38BDF8;--lav:#A78BFA;--ease:cubic-bezier(0.16,1,0.3,1)}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#f8fafc;--card:#fff;--ink:#0f172a;--mut:#64748b;--silver:#334155;--line:#e2e8f0;--hover:#f1f5f9;--ok:#15803d;--warn:#b45309;--err:#b91c1c;--acc:#0284c7;--lav:#7c3aed}}
+*{box-sizing:border-box}body{font-family:"Geist Sans",Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:0 1rem 3rem;font-size:.875rem;letter-spacing:-.002em}
+.mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .wrap{max-width:960px;margin:0 auto}header{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:baseline;margin:2rem 0 1rem}
 header h1{font-size:1.25rem;margin:0;letter-spacing:-.01em}header h1 .dot{color:var(--acc)}.sub{color:var(--mut);font-size:.875rem}
 .badges{display:flex;gap:.4rem;flex-wrap:wrap}.badge{font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:.15rem .6rem;background:var(--card)}
@@ -231,31 +231,45 @@ header h1{font-size:1.25rem;margin:0;letter-spacing:-.01em}header h1 .dot{color:
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin:1rem 0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.8rem 1rem}
 .card .k{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
-.card .v{font-size:1.25rem;font-weight:700;margin-top:.2rem}.card .s{font-size:.78rem;color:var(--mut)}
-section.card{margin:1rem 0}section h2{font-size:1.25rem;margin:.1rem 0 .6rem;font-weight:700}
+.card .v{font-size:1.25rem;font-weight:700;margin-top:.2rem;line-height:1.1}.card .s{font-size:.8rem;color:var(--mut)}
+.card.hero .v{font-size:2.5rem;font-weight:600;color:#FFFFFF}
+section.card{margin:1rem 0}section h2{font-size:.9rem;font-weight:500;color:var(--silver);margin:.1rem 0 .6rem;letter-spacing:-.02em}
 table{width:100%;border-collapse:collapse;font-size:.82rem}th,td{text-align:left;padding:.35rem .4rem;border-top:1px solid var(--line);vertical-align:top}
 th{border-top:0;color:var(--mut);font-weight:600}code{background:var(--bg);border:1px solid var(--line);padding:.05rem .3rem;border-radius:4px;font-size:.8em;word-break:break-all}
 .row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
-button,input{font:inherit;color:var(--ink)}button{background:var(--acc);color:#04121f;border:0;border-radius:8px;padding:.5rem 1rem;cursor:pointer;transition:transform .15s ease,opacity .15s ease}
+button,input{font:inherit;color:var(--ink)}button{background:var(--acc);color:#04121f;border:0;border-radius:8px;padding:.5rem 1rem;cursor:pointer;transition:transform .15s var(--ease),opacity .15s var(--ease),background-color .15s var(--ease)}
 button:hover:not(:disabled){transform:translateX(2px);opacity:.92}button.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
-button:disabled{opacity:.4;cursor:wait}input[type=text],input[type=password]{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem;min-width:0;transition:opacity .15s ease}input:hover{opacity:1}
+button.ghost:hover:not(:disabled){background-color:var(--hover);border-color:var(--acc)}
+button:disabled{opacity:.4;cursor:wait}input[type=text],input[type=password]{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.45rem .6rem;min-width:0;transition:opacity .15s var(--ease),border-color .15s var(--ease)}input:hover,input:focus{opacity:1;border-color:var(--acc)}
 #result{white-space:pre-wrap;font-size:.82rem;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.7rem;margin-top:.6rem;max-height:220px;overflow:auto}
 .mut{color:var(--mut);font-size:.8rem}
-footer{margin-top:2rem}.dests{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.4rem;margin-top:.2rem}.dests code{display:block;margin:0;padding:.4rem .6rem;transition:border-color .3s ease,opacity .15s ease}
-.dests code:hover{opacity:1}.dests code.off{opacity:.4}
-.dests code.on{color:var(--ok);border-color:var(--ok)}
-.dests code.off{color:var(--mut)}
-.dests code.miss{color:var(--warn);border-color:var(--warn)}
-.dests code.auto{color:var(--err);border-color:var(--err)}
-.dests code.pulse{border-color:var(--lav);box-shadow:0 0 0 1px var(--lav)}
-.dests .grp{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:.5rem 0 .2rem;grid-column:1/-1}
-.pipe{display:grid;grid-template-columns:1fr 64px;gap:.7rem;align-items:stretch;margin:.5rem 0}
-.src{border:1px solid var(--line);border-radius:10px;padding:.7rem .9rem;background:var(--card)}
-.src .k{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut)}
-.src .v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem;margin-top:.2rem;word-break:break-all}
-.conduit{position:relative;overflow:hidden;border-radius:6px;background:linear-gradient(90deg,transparent 0%,var(--lav) 50%,transparent 100%);background-size:64px 2px;background-repeat:repeat-x;background-position:center;opacity:.4;animation:flow 2.4s linear infinite;min-height:100%}
-@keyframes flow{from{background-position-x:0}to{background-position-x:64px}}
-@media (prefers-reduced-motion:reduce){.conduit{animation:none}button:hover:not(:disabled){transform:none}}
+footer{margin-top:2rem}
+.srcdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ok);margin-right:.4rem;animation:breathe 2.2s ease-in-out infinite;vertical-align:baseline}
+.srcdot.idle{background:var(--mut);animation:none}
+@keyframes breathe{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(52,211,153,.5)}50%{opacity:.55;box-shadow:0 0 0 6px rgba(52,211,153,0)}}
+.pipe{position:relative;display:grid;grid-template-columns:1fr;gap:.7rem;margin:.5rem 0;padding:.9rem;border:1px solid var(--line);border-radius:10px;background:var(--card);overflow:hidden}
+.pipe::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 60% 90% at 50% 50%,rgba(56,189,248,.05),transparent 70%);pointer-events:none}
+.srcrow{display:flex;align-items:center;gap:.5rem;font-size:.8rem;color:var(--mut)}
+.srcrow .v{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem;color:var(--ink);word-break:break-all}
+.conduit{position:relative;height:26px;border-radius:6px;background:linear-gradient(90deg,transparent 0%,var(--lav) 50%,transparent 100%);background-size:64px 2px;background-repeat:repeat-x;background-position:center;opacity:.25}
+.conduit .pkt{position:absolute;top:50%;left:0;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;background:var(--acc);box-shadow:0 0 8px 2px rgba(56,189,248,.7);opacity:0}
+.conduit.live .pkt{animation:travel 2.2s linear infinite}
+.conduit.live{opacity:.8}
+@keyframes travel{0%{left:0;opacity:0}12%{opacity:1}88%{opacity:1}100%{left:calc(100% - 7px);opacity:0}}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.5rem;margin-top:.2rem}
+.tile{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:.5rem .65rem;transition:background-color .15s var(--ease),border-color .15s var(--ease),transform .15s var(--ease)}
+.tile:hover{background-color:var(--hover);transform:translateX(2px)}
+.tile .t-name{font-family:"Geist Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;word-break:break-all}
+.tile .t-count{font-size:1.4rem;font-weight:600;margin-top:.1rem}
+.tile.on .t-count{color:var(--ok)}.tile.off{opacity:.45}.tile.off .t-name{color:var(--mut)}
+.tile.miss .t-count{color:var(--warn)}.tile.auto .t-count{color:var(--err)}
+.tile.flash{border-color:var(--ok);transition:border-color .1s}
+.spark{display:flex;align-items:flex-end;gap:2px;height:16px;margin-top:.3rem}
+.spark i{flex:1;background:var(--lav);opacity:.35;border-radius:1px;min-height:2px}
+.spark i.hot{background:var(--ok);opacity:1}
+.grp{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:.5rem 0 .2rem}
+.empty{border:1px dashed var(--line);border-radius:8px;padding:1rem;text-align:center;color:var(--mut);font-size:.82rem}
+@media (prefers-reduced-motion:reduce){.conduit.live .pkt{animation:none}.srcdot{animation:none}button:hover:not(:disabled),.tile:hover{transform:none}}
 details summary{cursor:pointer;font-size:.82rem}
 </style>
 </head><body><div class="wrap">
@@ -279,13 +293,12 @@ details summary{cursor:pointer;font-size:.82rem}
 <div class="row" style="margin-top:.6rem"><input type="password" id="inp-token" placeholder="Admin token (only if ADMIN_TOKEN is set)"><span class="mut">sent as Bearer header</span></div>
 <div id="result" hidden></div>
 </section>
-<section class="card"><h2>Last poll details</h2><div id="details" class="mut">No poll yet.</div></section>
-<section class="card"><h2>Pipeline <span class="mut" id="d-count"></span></h2><div class="pipe"><div class="src"><div class="k">Source inbox</div><div class="v">${escHtml(cfg.gmailUser)}</div></div><div class="conduit" title="source → sinks"></div></div><div id="dests">${destHtml}</div><p class="mut">Green = receiving copies · gray = disabled (-) · amber = no App Password yet · red = auto-disabled, fix password then Send test copy to re-enable.</p></section>
+<section class="card"><h2>Last poll details</h2><div id="details"><div class="empty">No messages in last poll — pipeline idle.</div></div></section>
+<section class="card"><h2>Pipeline <span class="mut" id="d-count"></span></h2><div class="pipe"><div class="srcrow"><span class="srcdot" id="srcdot"></span><span>Source</span><span class="v">${escHtml(cfg.gmailUser)}</span><span class="mut" id="pipe-state">listening</span></div><div class="conduit" id="conduit" title="source → sinks"><span class="pkt"></span></div><div id="dests">${destHtml}</div></div><p class="mut">Green = receiving copies · gray = disabled (-) · amber = no App Password yet · red = auto-disabled, fix password then Send test copy to re-enable.</p></section>
 <footer><p class="mut">Protected by Cloudflare Access (Email OTP, only ${escHtml(cfg.gmailUser)}). Do not expose this port directly. API: <code>GET /api/status</code> · <code>POST /api/poll-now</code> · <code>POST /api/baseline</code> · <code>POST /api/test-forward</code></p></footer>
 </div>
 <script>
 var token='';
-var prevRepl=0;
 function h(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function rel(iso){if(!iso)return'—';var t=new Date(iso).getTime(),d=Date.now()-t;if(isNaN(t))return'—';if(d<45e3)return'just now';if(d<3600e3)return Math.round(d/60e3)+'m ago';if(d<86400e3)return Math.round(d/3600e3)+'h ago';return new Date(iso).toLocaleString();}
 function humanMs(ms){if(ms==null)return'—';var s=Math.round(ms/1000);if(s<60)return s+'s';return (ms/60000).toFixed(ms<600000?1:0)+'m';}
@@ -293,10 +306,14 @@ function api(path,body){var hd={'Content-Type':'application/json'};if(token)hd['
 return fetch(path,{method:body?'POST':'GET',headers:hd,body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().then(function(j){j._http=r.status;return j;});});}
 function showMsg(o){var el=document.getElementById('result');el.hidden=false;el.textContent=JSON.stringify(o,null,2);}
 function setBusy(b){['btn-poll','btn-base','btn-test','btn-refresh'].forEach(function(id){document.getElementById(id).disabled=b;});}
+var stats={};
+function statHits(user){var s=stats[user]||(stats[user]={total:0,hits:[]});var cut=Date.now()-60000;s.hits=s.hits.filter(function(t){return t>cut;});return s;}
+function sparkHtml(user){var s=statHits(user);var out='';for(var i=0;i<12;i++){var t0=Date.now()-(12-i)*5000,t1=t0+5000,n=0;for(var j=0;j<s.hits.length;j++){if(s.hits[j]>=t0&&s.hits[j]<t1)n++;}out+='<i'+(n?' class="hot"':'')+' style="height:'+Math.min(16,2+n*4)+'px"></i>';}return out;}
 function renderDests(d){
 var list=d.destinations||[],on=d.sinkUsers||[],off=d.disabledSinks||[],auto=d.autoDisabledSinks||[];
 var onS={},offS={},autoS={};on.forEach(function(a){onS[a]=1;});off.forEach(function(a){offS[a]=1;});auto.forEach(function(a){autoS[a]=1;});
-function grp(title,arr,cls){if(!arr.length)return '';return '<div class="grp">'+h(title)+' ('+arr.length+')</div><div class="dests">'+arr.map(function(a){return '<code class="'+cls+'">'+h(a)+'</code>';}).join(' ')+'</div>';}
+function tile(a,cls){var short=String(a).split('@')[0];var s=statHits(a);return '<div class="tile '+cls+'" data-user="'+h(a)+'" title="'+h(a)+'"><div class="t-name">'+h(short)+'</div><div class="t-count">'+s.total+'</div><div class="spark">'+sparkHtml(a)+'</div></div>';}
+function grp(title,arr,cls){if(!arr.length)return '';return '<div class="grp">'+h(title)+' ('+arr.length+')</div><div class="tiles">'+arr.map(function(a){return tile(a,cls);}).join('')+'</div>';}
 var el=document.getElementById('dests');if(!el)return;
 el.innerHTML=grp('Active — receiving copies',list.filter(function(a){return onS[a]&&!autoS[a];}),'on')
 +grp('Auto-disabled — wrong or revoked password?',list.filter(function(a){return autoS[a];}),'auto')
@@ -311,7 +328,11 @@ document.getElementById('c-last').textContent=d.lastPollAt?rel(d.lastPollAt):'�
 document.getElementById('c-last-s').textContent=(r.reason||'')+(r.ms!=null?' · '+(r.ms/1000).toFixed(1)+'s':'')+(r.error?' · error':'');
 document.getElementById('c-fetched').textContent=(r.fetched!=null?r.fetched:'—');
 document.getElementById('c-repl').textContent=(r.replicated!=null?r.replicated:'—');
-if(r.replicated!=null&&r.replicated>prevRepl){prevRepl=r.replicated;var tiles=document.querySelectorAll('#dests code.on');tiles.forEach(function(t){t.classList.add('pulse');});setTimeout(function(){tiles.forEach(function(t){t.classList.remove('pulse');});},350);}
+if(r.details&&r.details.length){var okUsers={};r.details.forEach(function(m){(m.results||[]).forEach(function(x){if(x.ok){var s=statHits(x.to);s.total++;s.hits.push(Date.now());okUsers[x.to]=1;}});});
+var flashed=Object.keys(okUsers);if(flashed.length){var tiles=[];flashed.forEach(function(u){var t=document.querySelector('#dests .tile[data-user="'+u+'"]');if(t){t.classList.add('flash');tiles.push(t);}});setTimeout(function(){tiles.forEach(function(t){t.classList.remove('flash');});},800);}}
+if(r.fetched>0){var cd2=document.getElementById('conduit');if(cd2){cd2.classList.add('live');setTimeout(function(){cd2.classList.remove('live');},2500);}}
+var dot=document.getElementById('srcdot'),ps=document.getElementById('pipe-state');
+if(dot){var bad=d.setupNeeded||r.error||d.consecutiveErrors>0;dot.classList.toggle('idle',!!bad);if(ps)ps.textContent=d.setupNeeded?'setup needed':(r.error?'error — backing off':'listening');}
 document.getElementById('c-skip').textContent=(r.skipped!=null?r.skipped:'—');
 document.getElementById('c-seen').textContent=(d.seenCount!=null?d.seenCount:'—');
 document.getElementById('c-int').textContent=humanMs(d.pollIntervalMs);
@@ -327,7 +348,7 @@ if(r.error)al.push('<div class="alert err"><b>Last poll failed ('+h(r.reason||'?
 if(d.consecutiveErrors)al.push('<div class="alert warn"><b>Backing off:</b> '+d.consecutiveErrors+' consecutive error(s) — polls paused longer between retries.</div>');
 document.getElementById('alerts').innerHTML=al.join('');
 var det=document.getElementById('details');
-if(!r.details||!r.details.length){det.innerHTML='<span class="mut">No messages in last poll.</span>';return;}
+if(!r.details||!r.details.length){det.innerHTML='<div class="empty">No messages in last poll — pipeline idle.</div>';return;}
 var rows=r.details.map(function(m){
 var res=m.results||[],ok=res.filter(function(x){return x.ok;}).length;
 var errs=res.filter(function(x){return !x.ok;}).map(function(x){return h(x.to+': '+(x.error||x.skipped||'?'));});
