@@ -4,6 +4,11 @@ Sinka (from "sinks", `DEST_SINKS`): polls one Gmail inbox via **IMAP**
 and files each new message straight into multiple team inboxes via
 **IMAP APPEND** (Thunderbird-style copy).
 
+> An open-source **alternative to Gmailify** for teams: instead of
+> linking external addresses into one Gmail account, sinka fans one
+> source inbox out to many real inboxes — each member works from their
+> own mailbox, no forwarding rules or shared passwords needed.
+
 > Everything is IMAP — fetch from the source, APPEND into each
 > destination. Nothing is ever sent as mail, so there are no Gmail
 > sending limits and DKIM/SPF can never fail. Each inbox needs its own
