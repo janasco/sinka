@@ -208,11 +208,12 @@ async function poll(reason = 'timer') {
       // Outage alerting: notify once when this streak FIRST reaches threshold.
       // Empty topic = disabled. Fire-and-forget; alert failure never breaks polling.
       try {
-        const threshold = Number(process.env.ALERT_THRESHOLD || 3);
+        const parsedThreshold = Number.parseInt(String(process.env.ALERT_THRESHOLD ?? '3'), 10);
+        const threshold = Number.isFinite(parsedThreshold) && parsedThreshold >= 1 ? parsedThreshold : 3;
         const topic = (process.env.ALERT_NTFY_TOPIC || '').trim();
         if (!alerted && topic && state.consecutiveErrors >= threshold) {
           alerted = true;
-          fetch(`https://ntfy.sh/${topic}`, {
+          fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
             method: 'POST',
             body: `${state.consecutiveErrors} consecutive poll errors: ${err?.message || String(err)}. Dashboard needs attention.`,
             headers: { Title: 'sinka poll failing', Priority: 'high', Tags: 'warning' },

@@ -141,15 +141,10 @@ function appendFailureLog(cfg, suffix) {
 function enqueuePending(cfg, msg, to, error) {
   const messageId = String(msg?.messageId || `uid-${msg?.uid || 'unknown'}`);
   const key = pendingKey(messageId, to);
-  const prev = pending.get(key);
-  const attempts = (prev?.attempts || 0) + 1;
-  if (attempts >= MAX_ATTEMPTS) {
-    if (prev) pending.delete(key);
-    appendFailureLog(cfg, `PERMANENT messageId=${messageId} to=${to} attempts=${attempts} error=${String(error || 'append failed')}`);
-    console.error(`[sinks] dropping ${key} after ${attempts} attempts (${String(error || 'append failed').slice(0, 120)})`);
-    return;
-  }
-  if (!prev && pending.size >= MAX_PENDING) {
+  // Insert-only: replicatePending() owns the attempt counter, so a message
+  // that is both queued and refetched burns exactly one attempt per poll.
+  if (pending.has(key)) return;
+  if (pending.size >= MAX_PENDING) {
     const oldestKey = pending.keys().next().value;
     const oldest = pending.get(oldestKey);
     pending.delete(oldestKey);
@@ -159,12 +154,8 @@ function enqueuePending(cfg, msg, to, error) {
     );
     console.error(`[sinks] pending overflow — dropped oldest ${oldestKey}`);
   }
-  if (prev) {
-    prev.msg = msg;
-    prev.attempts = attempts;
-  } else {
-    pending.set(key, { msg, to, attempts });
-  }
+  pending.set(key, { msg, to, attempts: 1 });
+  if (error) console.error(`[sinks] queued retry ${key} (${String(error).slice(0, 120)})`);
 }
 
 // No raw bodies, no passwords — safe for status surfaces.
@@ -182,18 +173,14 @@ export async function replicatePending(cfg) {
   const entries = [...pending.entries()];
   const settled = await mapLimit(entries, getAppendConcurrency(), async ([key, entry]) => {
     const { msg, to } = entry;
-    const messageId = String(msg?.messageId || '');
-    const sink = (cfg?.sinks || []).find((s) => s.user === to && s.enabled !== false);
+    const messageId = String(msg?.messageId || `uid-${msg?.uid || 'unknown'}`);
+    // Hold (don't burn attempts, don't touch health) when the sink is gone,
+    // disabled, or auto-disabled: pausing must never discard queued mail,
+    // and health belongs to real APPEND outcomes only. Retries resume on
+    // re-enable; test-forward success also clears the queue via append path.
+    const sink = (cfg?.sinks || []).find((s) => s.user === to && s.enabled !== false && !isAutoDisabled(s.user));
     if (!sink) {
-      noteSinkResult(to, false);
-      const attempts = entry.attempts + 1;
-      if (attempts >= MAX_ATTEMPTS) {
-        pending.delete(key);
-        appendFailureLog(cfg, `PERMANENT messageId=${messageId} to=${to} attempts=${attempts} error=sink missing or disabled`);
-      } else {
-        entry.attempts = attempts;
-      }
-      return { to, messageId, uid: msg?.uid, ok: false, error: 'sink missing or disabled' };
+      return { to, messageId, uid: msg?.uid, ok: false, error: 'sink unavailable (held, not counted)', held: true };
     }
     if (cfg?.dryRun) {
       noteSinkResult(to, true);
@@ -221,10 +208,21 @@ export async function replicatePending(cfg) {
   });
   return settled.map((s, i) => {
     if (s.status === 'fulfilled') return s.value;
+    // Unreachable in practice (per-entry try/catch above), but a bookkeeping
+    // throw must still burn an attempt instead of retrying forever.
     const entry = entries[i]?.[1];
     const msg = entry?.msg;
     const to = entry?.to;
-    const messageId = String(msg?.messageId || '');
+    const messageId = String(msg?.messageId || `uid-${msg?.uid || 'unknown'}`);
+    if (entry) {
+      const attempts = (entry.attempts || 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        pending.delete(entries[i][0]);
+        appendFailureLog(cfg, `PERMANENT messageId=${messageId} to=${to} attempts=${attempts} error=${s.reason?.message || String(s.reason)}`);
+      } else {
+        entry.attempts = attempts;
+      }
+    }
     return { to, messageId, uid: msg?.uid, ok: false, error: s.reason?.message || String(s.reason), appendFailed: true };
   });
 }

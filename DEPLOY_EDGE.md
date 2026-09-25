@@ -14,15 +14,19 @@ D1 replaces `seen.json`.
 
 ## 2. Secrets (never commit)
 
+All identifying values are Worker secrets (a same-named `[vars]`
+entry would block the secret, so `[vars]` keeps only generic tuning:
+`POLL_INTERVAL_MS`, `LOOKBACK_HOURS`, `PORT`, `DATA_DIR`, `DRY_RUN`).
+
 ```bash
 npx wrangler secret put GMAIL_USER
 npx wrangler secret put GMAIL_APP_PASSWORD
 npx wrangler secret put DEST_SINKS
+npx wrangler secret put FORWARD_LIST
+npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+npx wrangler secret put D1_DATABASE_ID
 npx wrangler secret put CLOUDFLARE_API_TOKEN
-# Plain vars (not secret) — set in wrangler.toml [vars]:
-# CLOUDFLARE_ACCOUNT_ID=REPLACE_ME_CLOUDFLARE_ACCOUNT_ID
-# D1_DATABASE_ID=REPLACE_ME_D1_DATABASE_ID
-# FORWARD_LIST, POLL_INTERVAL_MS=300000, LOOKBACK_HOURS=24, PORT=8788
+npx wrangler secret put ADMIN_TOKEN
 ```
 
 `GITHUB_TOKEN_*` stays local only (deploy/ops), never as a Worker secret.
@@ -58,7 +62,7 @@ npx wrangler route add sinka.example.com/* sinka
 - Keep a Zero Trust Access app on your hostname
   (Email OTP, e.g. `you@example.com` only).
 - Test incognito: OTP → dashboard → `/api/status`
-  (`sinksConfigured: N`, `backend: d1` once D1 IDs are set).
+  (`sinksConfigured: N`, `seenCount`, `pendingSinks`).
 - `POST /api/test-forward {"to":"team-a@example.com"}`.
 
 ## 5. Retire the old path (only after edge is green)

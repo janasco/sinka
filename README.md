@@ -116,9 +116,11 @@ Cloudflare's edge:
    (e.g. `sinka.example.com/*`) pointing at the `sinka` worker.
 4. Put the Access lock on that address (Email OTP, only addresses
    you allow). Now the dashboard asks visitors for a code first.
+   The free `workers.dev` address stays off (`workers_dev = false`
+   in `wrangler.toml`), so the dashboard lives only on your address.
 
-The alarm clock (cron) is already set to every 5 minutes, and the
-D1 notebook remembers copied letters. Full step-by-step runbook:
+The alarm clock (cron `*/5 * * * *`) is already set to every
+5 minutes, matching the check interval, and the D1 notebook remembers copied letters. Full step-by-step runbook:
 **`DEPLOY_EDGE.md`**.
 
 Two safety rules:
@@ -130,20 +132,30 @@ Two safety rules:
 ## The dashboard, in plain words
 
 - Hero strip on top tells you the state: flowing normally, inbox(es)
-  need attention, setup needed, last check failed, or starting up.
+  need attention, no active inboxes, setup needed, last check failed,
+  or starting up.
 - **Pipeline**: source inbox → moving dots → team tiles. Green tile
   = copying. Gray = paused (`-` in front). Amber = needs a password.
-  Red = auto-disabled after repeated copy failures (wrong or revoked
+  Red = auto-disabled after 3 failed copies in a row (wrong or revoked
   password — fix it, then Send test copy to re-enable).
 - **Retrying** (amber) group is the retry queue: copies that failed
   part-way wait here with a try count and go out again on the next
-  check, so nothing is silently dropped.
+  check (up to 5 tries), so nothing is silently dropped.
 - **Check now** looks for mail immediately. **Skip backlog** marks
   old mail read without copying. Numbers count down to the next
   automatic check.
 - Outage alerts: when checks keep failing, sinka sends one phone
   buzz via ntfy.sh. Set `ALERT_NTFY_TOPIC` and `ALERT_THRESHOLD`
   in `.env` (see `.env.example`); empty topic = no alerts.
+  The same two keys are optional Worker secrets on the edge
+  (`npx wrangler secret put ALERT_NTFY_TOPIC` / `ALERT_THRESHOLD`).
+- Buttons need the admin token: paste `ADMIN_TOKEN` once per visit
+  to enable Check now / Skip backlog / Send test copy. Leave it
+  empty to rely on the Access lock alone. On the edge, the alarm
+  clock sends the token itself so automatic checks keep working.
+- Gentler copying (optional): set `APPEND_CONCURRENCY=N` to copy
+  into at most N inboxes at once. Leave it unset for all-at-once,
+  which is today's behavior.
 - Before sending changes, run `npm test` (plus `npm run check`)
   so the dashboard and copy logic stay green.
 
