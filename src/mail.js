@@ -1,5 +1,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Build configs from env. Throws with a clear message if credentials missing.
 export function loadConfig(env = process.env) {
@@ -67,6 +69,115 @@ function noteSinkResult(user, ok) {
 
 function isAutoDisabled(user) {
   return sinkHealth.get(user)?.autoDisabled === true;
+}
+
+// In-memory per-sink retry queue: replicateMessage() APPENDs raw bytes to
+// every active sink in parallel. A partial failure (9/10 ok) must not be
+// marked done and forgotten — failed (messageId → sink) pairs wait here
+// until replicatePending() delivers them or they hit MAX_ATTEMPTS.
+const pending = new Map(); // `${messageId}→${to}` -> { msg, to, attempts }
+const MAX_ATTEMPTS = 5;
+const MAX_PENDING = 500;
+
+function pendingKey(messageId, to) {
+  return `${messageId}→${to}`;
+}
+
+function appendFailureLog(cfg, suffix) {
+  try {
+    const dir = cfg?.dataDir || './data';
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch { /* ignore */ }
+    fs.appendFileSync(path.join(dir, 'failures.log'), `${new Date().toISOString()} ${suffix}\n`);
+  } catch { /* non-fatal */ }
+}
+
+function enqueuePending(cfg, msg, to, error) {
+  const messageId = String(msg?.messageId || `uid-${msg?.uid || 'unknown'}`);
+  const key = pendingKey(messageId, to);
+  const prev = pending.get(key);
+  const attempts = (prev?.attempts || 0) + 1;
+  if (attempts >= MAX_ATTEMPTS) {
+    if (prev) pending.delete(key);
+    appendFailureLog(cfg, `PERMANENT messageId=${messageId} to=${to} attempts=${attempts} error=${String(error || 'append failed')}`);
+    console.error(`[sinks] dropping ${key} after ${attempts} attempts (${String(error || 'append failed').slice(0, 120)})`);
+    return;
+  }
+  if (!prev && pending.size >= MAX_PENDING) {
+    const oldestKey = pending.keys().next().value;
+    const oldest = pending.get(oldestKey);
+    pending.delete(oldestKey);
+    appendFailureLog(
+      cfg,
+      `PERMANENT messageId=${String(oldest?.msg?.messageId || 'unknown')} to=${oldest?.to || oldestKey} attempts=${oldest?.attempts || '?'} error=pending-overflow (dropped oldest, cap ${MAX_PENDING})`
+    );
+    console.error(`[sinks] pending overflow — dropped oldest ${oldestKey}`);
+  }
+  if (prev) {
+    prev.msg = msg;
+    prev.attempts = attempts;
+  } else {
+    pending.set(key, { msg, to, attempts });
+  }
+}
+
+// No raw bodies, no passwords — safe for status surfaces.
+export function getPending() {
+  return [...pending.values()].map((e) => ({
+    to: e.to,
+    messageId: String(e.msg?.messageId || ''),
+    attempts: e.attempts,
+  }));
+}
+
+// Retry every pending (messageId → sink) pair via the same IMAP APPEND
+// path. Updates attempts + sink health; caller decides Seen-flagging.
+export async function replicatePending(cfg) {
+  const entries = [...pending.entries()];
+  const results = [];
+  for (const [key, entry] of entries) {
+    const { msg, to } = entry;
+    const messageId = String(msg?.messageId || '');
+    const sink = (cfg?.sinks || []).find((s) => s.user === to && s.enabled !== false);
+    if (!sink) {
+      noteSinkResult(to, false);
+      const attempts = entry.attempts + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        pending.delete(key);
+        appendFailureLog(cfg, `PERMANENT messageId=${messageId} to=${to} attempts=${attempts} error=sink missing or disabled`);
+      } else {
+        entry.attempts = attempts;
+      }
+      results.push({ to, messageId, uid: msg?.uid, ok: false, error: 'sink missing or disabled' });
+      continue;
+    }
+    if (cfg?.dryRun) {
+      noteSinkResult(to, true);
+      pending.delete(key);
+      results.push({ to, messageId, uid: msg?.uid, ok: true, dryRun: true });
+      continue;
+    }
+    try {
+      await appendToInbox(sink.user, sink.pass, msg.raw);
+      noteSinkResult(to, true);
+      pending.delete(key);
+      results.push({ to, messageId, uid: msg?.uid, ok: true, via: 'append' });
+    } catch (err) {
+      noteSinkResult(to, false);
+      const attempts = entry.attempts + 1;
+      const errMsg = err?.message || String(err);
+      if (attempts >= MAX_ATTEMPTS) {
+        pending.delete(key);
+        appendFailureLog(cfg, `PERMANENT messageId=${messageId} to=${to} attempts=${attempts} error=${errMsg}`);
+        console.error(`[sinks] dropping ${key} after ${attempts} attempts (${errMsg.slice(0, 120)})`);
+      } else {
+        entry.attempts = attempts;
+      }
+      results.push({ to, messageId, uid: msg?.uid, ok: false, error: errMsg, code: err?.responseCode, appendFailed: true });
+    }
+  }
+  return results;
 }
 
 // Direct mailbox COPY (Thunderbird-style): upload the raw message bytes
@@ -281,7 +392,11 @@ export async function replicateMessage(cfg, msg, { forwardList } = {}) {
         : { to: rcpt, ok: true, via: 'append' };
     }
     noteSinkResult(rcpt, false);
-    return { to: rcpt, ok: false, error: s.reason?.message || String(s.reason), code: s.reason?.responseCode, appendFailed: true };
+    const error = s.reason?.message || String(s.reason);
+    return { to: rcpt, ok: false, error, code: s.reason?.responseCode, appendFailed: true };
+  }).map((r) => {
+    if (!r.ok) enqueuePending(cfg, msg, r.to, r.error);
+    return r;
   });
 }
 

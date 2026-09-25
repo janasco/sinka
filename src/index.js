@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createStoreAuto } from './store_d1.js';
-import { loadConfig, parseSinks, fetchNewMessages, countUnseen, markUidsSeen, replicateMessage, appendTestMessage, getAutoDisabled } from './mail.js';
+import { loadConfig, parseSinks, fetchNewMessages, countUnseen, markUidsSeen, replicateMessage, replicatePending, getPending, appendTestMessage, getAutoDisabled } from './mail.js';
 
 const args = new Set(process.argv.slice(2));
 const runOnce = args.has('--once');
@@ -104,8 +104,31 @@ async function poll(reason = 'timer') {
     const messages = await withTimeout(fetchNewMessages(cfg), IMAP_BUDGET_MS, 'fetchNewMessages');
     let replicated = 0;
     let skipped = 0;
+    let retried = 0;
     const details = [];
     const uidsToFlag = [];
+    // Retry previously failed per-sink copies FIRST — this is the sole
+    // retry path. Every touched message is then filed Seen+stored so it
+    // is never refetched; remaining failures stay queued for later polls
+    // (no duplicate copies, no refetch storms).
+    try {
+      const retryResults = await withTimeout(replicatePending(cfg), IMAP_BUDGET_MS, 'replicatePending');
+      const retriedIds = new Map();
+      for (const r of retryResults) {
+        if (r.ok) retried++;
+        if (r.messageId && !retriedIds.has(r.messageId)) retriedIds.set(r.messageId, r.uid);
+      }
+      for (const [id, uid] of retriedIds) {
+        store.add(id);
+        if (uid != null) uidsToFlag.push(uid);
+      }
+      if (retryResults.length) {
+        details.push({ messageId: `retries (${retryResults.length} attempt${retryResults.length === 1 ? '' : 's'})`, from: '', subject: '', results: retryResults.map((r) => ({ to: r.to, ok: r.ok, ...(r.ok ? { via: r.via || 'append' } : { error: r.error }) })) });
+        console.log(`[poll] retries ok=${retryResults.filter((r) => r.ok).length}/${retryResults.length}`);
+      }
+    } catch (err) {
+      console.error('[poll] retry pass failed (main flow continues):', err?.message || err);
+    }
     for (const msg of messages) {
       const mStart = Date.now();
       if (store.has(msg.messageId)) {
@@ -161,12 +184,14 @@ async function poll(reason = 'timer') {
       ms: Date.now() - started,
       fetched: messages.length,
       replicated,
+      retried,
       skipped,
+      pending: getPending().length,
       destinations: cfg.forwardList.length,
       details: details.slice(0, 20),
     };
     state.consecutiveErrors = 0;
-    console.log(`[poll] fetched=${messages.length} replicated=${replicated} skipped=${skipped} (${state.lastResult.ms}ms)`);
+    console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} (${state.lastResult.ms}ms)`);
     return state.lastResult;
     } catch (err) {
       state.consecutiveErrors++;
@@ -206,15 +231,17 @@ app.get('/', (_req, res) => {
   const sinkUsers = new Set(cfg.sinks.filter((s) => s.enabled !== false).map((s) => s.user));
   const disUsers = new Set(cfg.sinks.filter((s) => s.enabled === false).map((s) => s.user));
   const autoUsers = new Set(getAutoDisabled());
-  const tile = (a, cls) => { const short = String(a).split('@')[0]; return `<div class="tile ${cls}" title="${escHtml(a)}"><div class="t-name">${escHtml(short)}</div><div class="t-count">0</div><div class="spark">${'<i></i>'.repeat(12)}</div></div>`; };
+  // First-paint fallback: same .tile shape as renderDests() tile() below (client is the visual source of truth, replaced on first refresh).
+  const tile = (a, cls) => { const short = String(a).split('@')[0]; return `<div class="tile ${cls}" data-user="${escHtml(a)}" title="${escHtml(a)}"><div class="t-name">${escHtml(short)}</div><div class="t-count">0</div><div class="spark">${'<i></i>'.repeat(12)}</div></div>`; };
   const on = cfg.forwardList.filter((a) => sinkUsers.has(a) && !autoUsers.has(a)).map((a) => tile(a, 'on')).join('');
   const auto = cfg.forwardList.filter((a) => autoUsers.has(a)).map((a) => tile(a, 'auto')).join('');
   const off = cfg.forwardList.filter((a) => disUsers.has(a)).map((a) => tile(a, 'off')).join('');
   const miss = cfg.forwardList.filter((a) => !sinkUsers.has(a) && !disUsers.has(a)).map((a) => tile(a, 'miss')).join('');
-  const destHtml = `${on ? `<div class="grp">Active (${sinkUsers.size - autoUsers.size}) — receiving copies</div><div class="tiles">${on}</div>` : ''}`
-    + `${auto ? `<div class="grp">Auto-disabled — wrong or revoked password?</div><div class="tiles">${auto}</div>` : ''}`
-    + `${off ? `<div class="grp">Disabled — kept, prefixed with -</div><div class="tiles">${off}</div>` : ''}`
-    + `${miss ? `<div class="grp">No App Password yet — skipped</div><div class="tiles">${miss}</div>` : ''}`;
+  // Group titles mirror renderDests() grp() labels below so first paint matches client re-render.
+  const destHtml = `${on ? `<div class="grp">Active — receiving copies (${sinkUsers.size - autoUsers.size})</div><div class="tiles">${on}</div>` : ''}`
+    + `${auto ? `<div class="grp">Auto-disabled — wrong or revoked password? (${autoUsers.size})</div><div class="tiles">${auto}</div>` : ''}`
+    + `${off ? `<div class="grp">Disabled — kept, prefixed with - (${disUsers.size})</div><div class="tiles">${off}</div>` : ''}`
+    + `${miss ? `<div class="grp">No App Password yet — skipped (${cfg.forwardList.filter((a) => !sinkUsers.has(a) && !disUsers.has(a)).length})</div><div class="tiles">${miss}</div>` : ''}`;
   res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>sinka · replicator dashboard</title>
 <style>
@@ -275,14 +302,21 @@ footer{margin-top:2rem}
 .hero .s{font-size:.8rem;color:var(--mut)}
 .hero.ok{border-color:var(--ok)}.hero.warn{border-color:var(--warn)}.hero.err{border-color:var(--err)}
 .help{font-size:.78rem;color:var(--mut);margin:.3rem 0 0}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.tile.retry{border-color:var(--warn)}.tile.retry .t-count{color:var(--warn)}
+.retry-note{font-size:.78rem;color:var(--warn);margin:.4rem 0 0}
+#details{overflow-x:auto}
+.pipe .grp:first-child{margin-top:.1rem}
+.tiles{margin-bottom:.15rem}
+@media (max-width:560px){body{padding:0 .6rem 2.5rem}header{margin:1.25rem 0 .75rem}.hero{padding:.7rem .8rem}.hero .t{font-size:.95rem}.card.hero .v{font-size:2rem}.pipe{padding:.7rem}.grid{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}.tiles{grid-template-columns:repeat(auto-fill,minmax(132px,1fr))}table{font-size:.78rem}}
 @media (prefers-reduced-motion:reduce){.conduit.live .pkt{animation:none}.srcdot{animation:none}button:hover:not(:disabled),.tile:hover{transform:none}}
 details summary{cursor:pointer;font-size:.82rem}
 </style>
 </head><body><div class="wrap">
 <header><h1>sinka</h1><span class="sub">IMAP replicator · <code>${escHtml(cfg.gmailUser)}</code> → <b>${cfg.forwardList.length}</b> inboxes</span></header>
 <div class="badges"><span class="badge ok">imap append</span><span class="badge" id="b-sinks">sinks: ${cfg.sinks.length}</span>${cfg.dryRun ? '<span class="badge warn">DRY RUN</span>' : '<span class="badge ok">live</span>'}</div>
-<div id="alerts"></div>
-<div class="hero ok" id="hero"><span class="face" id="hero-face">●</span><div><div class="t" id="hero-t">Starting up…</div><div class="s" id="hero-s">First check runs in a few seconds.</div></div></div>
+<div id="alerts" aria-live="polite"></div>
+<div class="hero ok" id="hero"><span class="face" id="hero-face">●</span><div><div class="t" id="hero-t">Starting up…</div><div class="s" id="hero-s" aria-live="polite">First check runs in a few seconds.</div></div></div>
 <section class="card"><h2>Pipeline <span class="mut" id="d-count"></span></h2><div class="pipe"><div class="srcrow"><span class="srcdot" id="srcdot"></span><span>Source</span><span class="v">${escHtml(cfg.gmailUser)}</span><span class="mut" id="pipe-state">listening</span></div><div class="conduit" id="conduit" title="source → sinks"><span class="pkt"></span></div><div id="dests">${destHtml}</div></div><p class="mut">Green = receiving copies · gray = paused (-) · amber = needs a password · red = password failed, fix it then Send test copy.</p></section>
 <section class="card"><h2>Status <span class="mut" id="upd"></span></h2>
 <div class="grid">
@@ -293,12 +327,12 @@ details summary{cursor:pointer;font-size:.82rem}
 <div class="card mini"><div class="k">Tracked</div><div class="v" id="c-seen">—</div><div class="s">messages remembered</div></div>
 <div class="card mini"><div class="k">Check every</div><div class="v" id="c-int">—</div><div class="s" id="c-up"></div></div>
 </div>
-<div class="row"><button class="ghost" id="btn-refresh">Refresh</button><span class="mut">auto-refresh in <b id="cd">30</b>s</span></div>
+<div class="row"><button type="button" class="ghost" id="btn-refresh">Refresh</button><span class="mut">auto-refresh in <b id="cd">30</b>s</span></div>
 </section>
 <section class="card"><h2>Actions</h2>
-<div class="row"><button id="btn-poll">Check now</button><button class="ghost" id="btn-base">Skip backlog</button></div>
+<div class="row"><button type="button" id="btn-poll">Check now</button><button type="button" class="ghost" id="btn-base">Skip backlog</button></div>
 <p class="help">Check now looks for new mail immediately. Skip backlog marks everything currently unread as read without copying — use after holidays or big backlogs.</p>
-<div class="row" style="margin-top:.6rem"><input type="text" id="inp-to" placeholder="test address" value="${escHtml(cfg.forwardList[0] || '')}"><button class="ghost" id="btn-test">Send test copy</button></div>
+<div class="row" style="margin-top:.6rem"><input type="text" id="inp-to" placeholder="test address" value="${escHtml(cfg.forwardList[0] || '')}"><button type="button" class="ghost" id="btn-test">Send test copy</button></div>
 <p class="help">Sends one labeled test message to every active inbox — also re-enables an inbox after you fix its password.</p>
 <div class="row" style="margin-top:.6rem"><input type="password" id="inp-token" placeholder="Admin token"><span class="mut">paste once per visit, enables the buttons above</span></div>
 <div id="result" hidden></div>
@@ -319,17 +353,21 @@ var stats={};
 function statHits(user){var s=stats[user]||(stats[user]={total:0,hits:[]});var cut=Date.now()-60000;s.hits=s.hits.filter(function(t){return t>cut;});return s;}
 function sparkHtml(user){var s=statHits(user);var out='';for(var i=0;i<12;i++){var t0=Date.now()-(12-i)*5000,t1=t0+5000,n=0;for(var j=0;j<s.hits.length;j++){if(s.hits[j]>=t0&&s.hits[j]<t1)n++;}out+='<i'+(n?' class="hot"':'')+' style="height:'+Math.min(16,2+n*4)+'px"></i>';}return out;}
 function renderDests(d){
+// Group labels here are the source of truth; server destHtml above mirrors them for first paint.
 var list=d.destinations||[],on=d.sinkUsers||[],off=d.disabledSinks||[],auto=d.autoDisabledSinks||[];
+var pending=Array.isArray(d.pendingSinks)?d.pendingSinks.filter(function(p){return p&&p.to;}):[];
 var onS={},offS={},autoS={};on.forEach(function(a){onS[a]=1;});off.forEach(function(a){offS[a]=1;});auto.forEach(function(a){autoS[a]=1;});
 function tile(a,cls){var short=String(a).split('@')[0];var s=statHits(a);return '<div class="tile '+cls+'" data-user="'+h(a)+'" title="'+h(a)+'"><div class="t-name">'+h(short)+'</div><div class="t-count">'+s.total+'</div><div class="spark">'+sparkHtml(a)+'</div></div>';}
 function grp(title,arr,cls){if(!arr.length)return '';return '<div class="grp">'+h(title)+' ('+arr.length+')</div><div class="tiles">'+arr.map(function(a){return tile(a,cls);}).join('')+'</div>';}
+function retryGrp(){if(!pending.length)return '';var tiles=pending.map(function(p){var short=String(p.to).split('@')[0];var n=Number(p.attempts)||0;var mid=String(p.messageId||'').slice(0,24);return '<div class="tile retry" data-user="'+h(p.to)+'" title="'+h(p.to+(mid?' · '+mid:''))+'"><div class="t-name">'+h(short)+'</div><div class="t-count">'+n+'</div><div class="s mut">'+(n===1?'1 try':' tried ×'+n)+'</div></div>';}).join('');
+return '<div class="grp">Retrying ('+pending.length+')</div><div class="tiles">'+tiles+'</div><p class="retry-note">'+pending.length+' cop'+(pending.length===1?'y':'ies')+' will retry on the next check.</p>';}
 var el=document.getElementById('dests');if(!el)return;
 el.innerHTML=grp('Active — receiving copies',list.filter(function(a){return onS[a]&&!autoS[a];}),'on')
 +grp('Auto-disabled — wrong or revoked password?',list.filter(function(a){return autoS[a];}),'auto')
 +grp('Disabled — kept, prefixed with -',list.filter(function(a){return offS[a];}),'off')
-+grp('No App Password yet — skipped',list.filter(function(a){return !onS[a]&&!offS[a];}),'miss');
-var c=document.getElementById('d-count');if(c)c.textContent=(on.length-auto.length)+'/'+list.length+' active';
-}
++grp('No App Password yet — skipped',list.filter(function(a){return !onS[a]&&!offS[a];}),'miss')
++retryGrp();
+var c=document.getElementById('d-count');if(c)c.textContent=(on.length-auto.length)+'/'+list.length+' active';}
 function render(d){
 document.getElementById('upd').textContent=d.lastPollAt?('updated '+rel(d.lastPollAt)):'';
 var r=d.lastResult||{};
@@ -373,7 +411,7 @@ var per=res.map(function(x){return '<li>'+h(x.to)+' — '+(x.ok?('ok'+(x.via?' v
 return '<tr><td><code>'+h(String(m.messageId||'').slice(0,40))+'</code></td><td>'+h(m.from||'')+'</td><td>'+h(m.subject||'')+'</td>'+
 '<td><details><summary>'+ok+'/'+res.length+' ok</summary><ul>'+per+'</ul>'+(errs.length?'<div>'+errs.join('<br>')+'</div>':'')+'</details></td></tr>';
 }).join('');
-det.innerHTML='<table><thead><tr><th>Message</th><th>From</th><th>Subject</th><th>Copies</th></tr></thead><tbody>'+rows+'</tbody></table>';
+det.innerHTML='<table><thead><tr><th scope="col">Message</th><th scope="col">From</th><th scope="col">Subject</th><th scope="col">Copies</th></tr></thead><tbody>'+rows+'</tbody></table>';
 }
 function refresh(){return api('/api/status').then(function(d){render(d);countdown=30;document.getElementById('cd').textContent=countdown;}).catch(function(e){document.getElementById('alerts').innerHTML='<div class="alert err"><b>Status unreachable:</b> '+h(e.message||e)+'</div>';});}
 document.getElementById('btn-refresh').onclick=function(){setBusy(true);refresh().finally(function(){setBusy(false);});};
@@ -398,6 +436,7 @@ app.get('/api/status', requireAdmin, (_req, res) => {
     sinkUsers: cfg.sinks.filter((s) => s.enabled !== false).map((s) => s.user),
     disabledSinks: cfg.sinks.filter((s) => s.enabled === false).map((s) => s.user),
     autoDisabledSinks: getAutoDisabled(),
+    pendingSinks: getPending(),
     pollIntervalMs: cfg.pollIntervalMs,
     dryRun: cfg.dryRun,
     seenCount: store.size(),
