@@ -103,6 +103,10 @@ Cloudflare's edge:
    npx wrangler secret put GMAIL_APP_PASSWORD
    npx wrangler secret put DEST_SINKS
    npx wrangler secret put FORWARD_LIST
+   npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+   npx wrangler secret put D1_DATABASE_ID
+   npx wrangler secret put CLOUDFLARE_API_TOKEN
+   npx wrangler secret put ADMIN_TOKEN
    ```
 2. Launch it:
    ```bash
@@ -125,14 +129,23 @@ Two safety rules:
 
 ## The dashboard, in plain words
 
-- Big line on top tells you the state: flowing, needs attention,
-  or starting up.
+- Hero strip on top tells you the state: flowing normally, inbox(es)
+  need attention, setup needed, last check failed, or starting up.
 - **Pipeline**: source inbox → moving dots → team tiles. Green tile
-  = copying. Gray = paused. Amber = needs a password. Red =
-  password failed (fix it, then Send test copy).
+  = copying. Gray = paused (`-` in front). Amber = needs a password.
+  Red = auto-disabled after repeated copy failures (wrong or revoked
+  password — fix it, then Send test copy to re-enable).
+- **Retrying** (amber) group is the retry queue: copies that failed
+  part-way wait here with a try count and go out again on the next
+  check, so nothing is silently dropped.
 - **Check now** looks for mail immediately. **Skip backlog** marks
   old mail read without copying. Numbers count down to the next
   automatic check.
+- Outage alerts: when checks keep failing, sinka sends one phone
+  buzz via ntfy.sh. Set `ALERT_NTFY_TOPIC` and `ALERT_THRESHOLD`
+  in `.env` (see `.env.example`); empty topic = no alerts.
+- Before sending changes, run `npm test` (plus `npm run check`)
+  so the dashboard and copy logic stay green.
 
 ## Help out
 

@@ -71,6 +71,51 @@ function isAutoDisabled(user) {
   return sinkHealth.get(user)?.autoDisabled === true;
 }
 
+// Optional APPEND concurrency cap to ease Gmail throttling.
+// Env APPEND_CONCURRENCY="N": at most N concurrent IMAP APPENDs per
+// fan-out. Unset, empty, non-numeric, or <= 0 means unlimited
+// (today's fully-parallel behavior). Read inside the fan-out functions
+// from process.env so tests/canary can change it without a restart.
+export function getAppendConcurrency(env = process.env) {
+  const raw = env?.APPEND_CONCURRENCY;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return 0;
+  const n = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isFinite(n) || n < 1) return 0;
+  return n;
+}
+
+// Ordered concurrency limiter with Promise.allSettled shapes:
+// resolves to an array aligned with list order, each entry
+// { status: 'fulfilled', value } or { status: 'rejected', reason }.
+// n <= 0 (or NaN/Infinity) means unlimited (fully parallel, same as
+// Promise.allSettled). Otherwise at most n fn() calls run at once.
+export async function mapLimit(list, n, fn) {
+  const items = Array.isArray(list) ? list : [...list];
+  const limit = Number(n);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    return Promise.allSettled(items.map((item, i) => Promise.resolve().then(() => fn(item, i))));
+  }
+  const cap = Math.max(1, Math.floor(limit));
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const idx = next++;
+      if (idx >= items.length) return;
+      try {
+        const value = await fn(items[idx], idx);
+        results[idx] = { status: 'fulfilled', value };
+      } catch (reason) {
+        results[idx] = { status: 'rejected', reason };
+      }
+    }
+  }
+  const workers = [];
+  for (let w = 0; w < Math.min(cap, items.length); w++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
 // In-memory per-sink retry queue: replicateMessage() APPENDs raw bytes to
 // every active sink in parallel. A partial failure (9/10 ok) must not be
 // marked done and forgotten — failed (messageId → sink) pairs wait here
@@ -135,8 +180,7 @@ export function getPending() {
 // path. Updates attempts + sink health; caller decides Seen-flagging.
 export async function replicatePending(cfg) {
   const entries = [...pending.entries()];
-  const results = [];
-  for (const [key, entry] of entries) {
+  const settled = await mapLimit(entries, getAppendConcurrency(), async ([key, entry]) => {
     const { msg, to } = entry;
     const messageId = String(msg?.messageId || '');
     const sink = (cfg?.sinks || []).find((s) => s.user === to && s.enabled !== false);
@@ -149,20 +193,18 @@ export async function replicatePending(cfg) {
       } else {
         entry.attempts = attempts;
       }
-      results.push({ to, messageId, uid: msg?.uid, ok: false, error: 'sink missing or disabled' });
-      continue;
+      return { to, messageId, uid: msg?.uid, ok: false, error: 'sink missing or disabled' };
     }
     if (cfg?.dryRun) {
       noteSinkResult(to, true);
       pending.delete(key);
-      results.push({ to, messageId, uid: msg?.uid, ok: true, dryRun: true });
-      continue;
+      return { to, messageId, uid: msg?.uid, ok: true, dryRun: true };
     }
     try {
       await appendToInbox(sink.user, sink.pass, msg.raw);
       noteSinkResult(to, true);
       pending.delete(key);
-      results.push({ to, messageId, uid: msg?.uid, ok: true, via: 'append' });
+      return { to, messageId, uid: msg?.uid, ok: true, via: 'append' };
     } catch (err) {
       noteSinkResult(to, false);
       const attempts = entry.attempts + 1;
@@ -174,10 +216,17 @@ export async function replicatePending(cfg) {
       } else {
         entry.attempts = attempts;
       }
-      results.push({ to, messageId, uid: msg?.uid, ok: false, error: errMsg, code: err?.responseCode, appendFailed: true });
+      return { to, messageId, uid: msg?.uid, ok: false, error: errMsg, code: err?.responseCode, appendFailed: true };
     }
-  }
-  return results;
+  });
+  return settled.map((s, i) => {
+    if (s.status === 'fulfilled') return s.value;
+    const entry = entries[i]?.[1];
+    const msg = entry?.msg;
+    const to = entry?.to;
+    const messageId = String(msg?.messageId || '');
+    return { to, messageId, uid: msg?.uid, ok: false, error: s.reason?.message || String(s.reason), appendFailed: true };
+  });
 }
 
 // Direct mailbox COPY (Thunderbird-style): upload the raw message bytes
@@ -366,7 +415,9 @@ export async function replicateMessage(cfg, msg, { forwardList } = {}) {
   }
 
   // Same raw bytes into every active mailbox, in parallel (each sink is a
-  // different account, so limits are independent).
+  // different account, so limits are independent). APPEND_CONCURRENCY=N
+  // caps how many APPENDs run at once to ease Gmail throttling
+  // (unset/<=0/invalid = unlimited, today's behavior).
   // Sinks disabled with a '-' prefix in DEST_SINKS are skipped (kept for config).
   // Sinks auto-disabled after repeated APPEND failures are skipped too.
   const active = cfg.sinks.filter((s) => s.enabled !== false && !isAutoDisabled(s.user));
@@ -376,12 +427,14 @@ export async function replicateMessage(cfg, msg, { forwardList } = {}) {
     // No code => transient => stays unseen, retried next poll (no silent loss).
     return list.map((rcpt) => ({ to: rcpt, ok: false, error: 'DEST_SINKS empty' }));
   }
-  const settled = await Promise.allSettled(
-    active.map(async (sink) => {
+  const settled = await mapLimit(
+    active,
+    getAppendConcurrency(),
+    async (sink) => {
       if (cfg.dryRun) return { sink: sink.user, dryRun: true };
       await appendToInbox(sink.user, sink.pass, msg.raw);
       return { sink: sink.user };
-    })
+    }
   );
   return settled.map((s, i) => {
     const rcpt = active[i].user;
@@ -419,11 +472,13 @@ export async function appendTestMessage(cfg, to) {
     '',
   ].join('\r\n');
   if (cfg.dryRun) return { dryRun: true, to: target };
-  const settled = await Promise.allSettled(
-    active.map(async (sink) => {
+  const settled = await mapLimit(
+    active,
+    getAppendConcurrency(),
+    async (sink) => {
       await appendToInbox(sink.user, sink.pass, raw);
       return { sink: sink.user };
-    })
+    }
   );
   // Test intentionally tries every enabled sink (including auto-disabled
   // ones) so fixing a password + re-testing re-enables it on success.

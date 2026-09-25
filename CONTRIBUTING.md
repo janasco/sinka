@@ -8,6 +8,7 @@ Thanks for stopping by — issues and pull requests are welcome.
 cp .env.example .env   # fill in your own test values, never commit it
 npm install
 npm run check          # syntax check — run before every PR
+npm test               # unit tests — must pass before every PR
 npm run poll-once      # single poll, safe way to test changes
 ```
 
@@ -17,7 +18,7 @@ Please don't commit `.env`, `data/seen.json`, or any log files.
 
 - Keep the change small and focused; one thing per PR.
 - Describe what you changed and how you tested it
-  (`npm run check`, `npm run poll-once`, edge test if relevant).
+  (`npm run check`, `npm test`, `npm run poll-once`, edge test if relevant).
 - Don't reintroduce SMTP/sending — this project is IMAP APPEND only.
 - Don't add new `*_TOKEN` env keys without discussing first.
 
