@@ -9,6 +9,7 @@
     "dev": "node --watch src/index.js",
     "poll-once": "node src/index.js --once",
     "check": "node --check src/index.js && node --check src/mail.js && node --check src/store.js && node --check src/store_d1.js && node --check worker.js",
+    "test": "node --test test/*.test.js",
     "d1:schema": "wrangler d1 execute sinka-seen --remote --file=./schema.sql"
   },
   "engines": {

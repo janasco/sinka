@@ -51,6 +51,7 @@ const state = {
 
 let polling = false; // single-flight: never overlap polls on one Gmail account
 let nextAllowedAt = 0; // error backoff: Gmail throttle protection
+let alerted = false; // outage alert: true once ntfy fired for current error streak
 // Watchdog: never let one wedged IMAP session hang a poll forever.
 function withTimeout(promise, ms, label) {
   let timer;
@@ -99,6 +100,8 @@ async function poll(reason = 'timer') {
         details: [],
       };
       console.log(`[poll] BASELINED ${pendingUids.length} existing messages (no forwarding). New mail from here on will be replicated.`);
+      state.consecutiveErrors = 0;
+      alerted = false;
       return state.lastResult;
     }
     const messages = await withTimeout(fetchNewMessages(cfg), IMAP_BUDGET_MS, 'fetchNewMessages');
@@ -191,6 +194,7 @@ async function poll(reason = 'timer') {
       details: details.slice(0, 20),
     };
     state.consecutiveErrors = 0;
+    alerted = false;
     console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} (${state.lastResult.ms}ms)`);
     return state.lastResult;
     } catch (err) {
@@ -201,6 +205,23 @@ async function poll(reason = 'timer') {
       state.lastPollAt = new Date().toISOString();
       state.lastResult = { reason, error: err?.message || String(err) };
       console.error('[poll] failed:', err?.message || err, `(backing off ${Math.round(backoffMs / 60000)}min)`);
+      // Outage alerting: notify once when this streak FIRST reaches threshold.
+      // Empty topic = disabled. Fire-and-forget; alert failure never breaks polling.
+      try {
+        const threshold = Number(process.env.ALERT_THRESHOLD || 3);
+        const topic = (process.env.ALERT_NTFY_TOPIC || '').trim();
+        if (!alerted && topic && state.consecutiveErrors >= threshold) {
+          alerted = true;
+          fetch(`https://ntfy.sh/${topic}`, {
+            method: 'POST',
+            body: `${state.consecutiveErrors} consecutive poll errors: ${err?.message || String(err)}. Dashboard needs attention.`,
+            headers: { Title: 'sinka poll failing', Priority: 'high', Tags: 'warning' },
+            signal: AbortSignal.timeout(10000),
+          }).catch((alertErr) => console.error('[alert] ntfy failed:', alertErr?.message || alertErr));
+        }
+      } catch (alertErr) {
+        console.error('[alert] ntfy failed:', alertErr?.message || alertErr);
+      }
       return state.lastResult;
     }
   } finally {
