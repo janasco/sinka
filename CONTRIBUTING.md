@@ -23,8 +23,13 @@ secrets on the edge. Required: `GMAIL_USER`, `GMAIL_APP_PASSWORD`,
 Optional: `ALERT_NTFY_TOPIC` + `ALERT_THRESHOLD` (outage buzz via
 ntfy.sh, empty topic = off), `APPEND_CONCURRENCY` (cap parallel
 copies, unset = all at once), `CATCHUP_LIMIT` (default 25),
-`POLL_INTERVAL_MS` (default 300000 on the edge), `ADMIN_TOKEN`
-(empty = rely on Cloudflare Access alone).
+`POLL_INTERVAL_MS` (default 300000 on the edge, 60000 with no
+`.env` value), `ADMIN_TOKEN` (empty = rely on Cloudflare Access alone).
+
+The container only receives the settings listed in the `envVars`
+allow-list in `worker.js`. A key set as a Worker secret but missing
+from that list never reaches the poller, so add it there in the same
+PR.
 
 Use placeholders in docs/issues (`you@example.com`,
 `team@example.com`, `sinka.example.com`, `REPLACE_ME_*`) — never
@@ -32,13 +37,30 @@ real addresses, IDs, or hostnames.
 
 ## What to check before a PR
 
-- Dashboard: hero strip states, pipeline tiles (active / auto-disabled
-  after 3 failed copies / disabled `-` / needs a password / retrying),
-  30s auto-refresh countdown, and `GET /api/status` fields
-  (`sinkUsers`, `disabledSinks`, `autoDisabledSinks`, `pendingSinks`).
+Dashboard (keep the page's own wording):
+- The verdict line at the top still reads correctly for each state
+  (working / N inboxes need help / no team inboxes / setup needed /
+  last check failed / starting up) and still says "Can't reach sinka"
+  when `/api/status` cannot be reached, with the numbers below frozen
+  rather than left looking live.
+- Section names: "What it is doing right now", "What the last check
+  found", "Things you can do", "What just happened", "Start here".
+- Tile groups and colors: Copying right now (green), Sign-in failed,
+  waiting for you (red), Paused by you (gray), No sign-in details yet
+  (amber), Trying again (purple). The source dot is green / red / gray
+  for finished / failed / unreachable.
+- The 30s countdown is the page redraw only, and the page says so; the
+  real check interval (`POLL_INTERVAL_MS`) is shown separately as
+  "Checks every".
+- Buttons: "Check for mail now", "Refresh the numbers", "Send a test
+  copy", "Skip the backlog" (confirm-first, cannot be undone), plus the
+  private-token field.
+- The "Start here" checklist still only states what is really true.
+- `GET /api/status` fields (`sinkUsers`, `disabledSinks`,
+  `autoDisabledSinks`, `pendingSinks`).
 - Copy logic: IMAP APPEND only, retry queue (`pendingSinks`) still
-  drains on the next poll, cron stays `*/5 * * * *`, and the free
-  `workers.dev` address stays off.
+  drains on the next poll, cron stays `*/5 * * * *` in step with
+  `POLL_INTERVAL_MS`, and the free `workers.dev` address stays off.
 
 ## Pull requests
 

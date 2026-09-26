@@ -11,6 +11,12 @@ export class ReplicatorContainer extends Container {
   // No "never" in this SDK — cron (every 5m) + internal interval keep it
   // warm; 30m idle timeout covers cron jitter without sleeping mid-poll.
   sleepAfter = '30m';
+  // Environment contract: the container receives ONLY the keys listed here.
+  // A Worker secret or [vars] key that is not in this block never reaches the
+  // poller, so the feature stays silently inert on the edge — when src/*.js
+  // starts reading a new setting, add it here in the same change. Every value
+  // needs an `?? '<default>'` fallback so the container SDK never receives
+  // undefined. GITHUB_TOKEN_* is deploy/ops only and deliberately absent.
   envVars = {
     GMAIL_USER: env.GMAIL_USER ?? '',
     GMAIL_APP_PASSWORD: env.GMAIL_APP_PASSWORD ?? '',
@@ -25,6 +31,15 @@ export class ReplicatorContainer extends Container {
     CLOUDFLARE_ACCOUNT_ID: env.CLOUDFLARE_ACCOUNT_ID ?? '',
     D1_DATABASE_ID: env.D1_DATABASE_ID ?? '',
     CLOUDFLARE_API_TOKEN: env.CLOUDFLARE_API_TOKEN ?? '',
+    // Outage alert via ntfy.sh: empty topic = disabled.
+    ALERT_NTFY_TOPIC: env.ALERT_NTFY_TOPIC ?? '',
+    // Consecutive failed polls before the alert fires (src/index.js: 3).
+    ALERT_THRESHOLD: env.ALERT_THRESHOLD ?? '3',
+    // Max parallel IMAP APPENDs per fan-out; ''/0 = unlimited (src/mail.js).
+    APPEND_CONCURRENCY: env.APPEND_CONCURRENCY ?? '',
+    // First-run UNSEEN backlog cap; above it the inbox is baselined
+    // instead of blasted (src/index.js: 25).
+    CATCHUP_LIMIT: env.CATCHUP_LIMIT ?? '25',
   };
 }
 

@@ -259,7 +259,10 @@ app.get('/', (_req, res) => {
   const miss = cfg.forwardList.filter((a) => !sinkUsers.has(a) && !disUsers.has(a));
   // First-paint fallback: identical shape to renderDests()'s tile() below (the client is the
   // visual source of truth; this is replaced on the first refresh).
-  const tile = (a, cls) => `<div class="tile ${cls}" data-user="${escHtml(a)}" title="${escHtml(a)}"><div class="t-name">${escHtml(a)}</div><div class="t-foot"><span class="t-count">0</span><span class="t-unit">copies</span></div><div class="spark">${'<i></i>'.repeat(12)}</div></div>`;
+  // The address appears once as text and once as data-user for the tile lookup:
+  // no title=, so a screen reader is not handed the same inbox three times.
+  // The sparkline bars are decorative, so they are hidden from it.
+  const tile = (a, cls) => `<div class="tile ${cls}" data-user="${escHtml(a)}"><div class="t-name">${escHtml(a)}</div><div class="t-foot"><span class="t-count">0</span><span class="t-unit">copies</span></div><div class="spark">${'<i aria-hidden="true"></i>'.repeat(12)}</div></div>`;
   const grp = (title, arr, cls) => (arr.length
     ? `<div class="grp"><span class="grp-k">${escHtml(title)}</span><span class="grp-n">${arr.length}</span></div><div class="tiles">${arr.map((a) => tile(a, cls)).join('')}</div>`
     : '');
@@ -453,7 +456,7 @@ a{color:var(--acc)}
 .ticker{margin-top:.9rem;padding-top:.85rem;border-top:1px solid var(--line);font-size:var(--fs-xs);color:var(--mut)}
 .frozen-note{margin-top:.6rem;font-size:var(--fs-xs);color:var(--err);border-left:3px solid var(--err);padding:.3rem 0 .3rem .6rem}
 /* nothing below is moving: dim it rather than let it look live */
-body.frozen .mgrid,body.frozen .dests,body.frozen #details,body.frozen .cklist{opacity:.5;filter:saturate(.55)}
+body.frozen .mgrid,body.frozen .dests,body.frozen #details,body.frozen .cklist,body.frozen .rail{opacity:.5;filter:saturate(.55)}
 
 /* ---- 7. actions ---- */
 .actlist{display:flex;flex-direction:column;gap:.8rem}
@@ -634,6 +637,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <button type="button" id="btn-test-fix">Send a test copy</button>
       <button type="button" class="ghost" id="btn-poll-fix">Check for mail now</button>
     </div>
+    <p class="fix-t" id="fix-to" style="margin-top:.5rem">Where the test copy will go is filled in once the server answers.</p>
   </section>
 
   <section class="card" id="pipe" aria-labelledby="pipe-h">
@@ -811,50 +815,104 @@ var netDownAt=0;      // when this page first noticed it could not reach the ser
 var lastGood=null;    // the last payload that really arrived
 var lastGoodAt=0;     // when it arrived
 var flashAt={};       // inbox -> time of a real copy, the still signal under reduced motion
+var countedToken='';  // which result is already folded into the tile counts, so the fold is idempotent
+var reqSeq=0;         // request stamp: only the newest answer is allowed to paint
+var sparkCache={};    // inbox -> built spark bars, so a redraw does not rebuild them
 var lastVerdict='';   // so an unchanged answer is not read out again every 30s
 var lastAlertHtml=''; // so the alerts are only announced when they really change
 var countdown=REFRESH_SECS;
 var hiddenSince=0;
 var backTimer=null;
 var BUTTONS=['btn-poll','btn-base','btn-test','btn-refresh','btn-test-fix','btn-poll-fix'];
+var DASH='—';
+/* Everything here is a network payload, so a missing, null or wrongly-typed field
+   is a fact about the answer and never a reason for this page to invent one. */
+function arr(v){return Array.isArray(v)?v:[];}
+function num(v){var n=Number(v);return(typeof v==='boolean'||v==null||v===''||!isFinite(n))?null:n;}
+function numText(v){var n=num(v);return n==null?DASH:String(n);}
+function str(v){return(v==null)?'':(typeof v==='string'?v:(typeof v==='number'&&isFinite(v)?String(v):''));}
 function h(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function el(id){return document.getElementById(id);}
 /* Only write when the words really change: a live region must not repeat itself. */
 function setText(id,v){var n=el(id);if(!n)return;v=String(v==null?'':v);if(n.textContent!==v)n.textContent=v;}
-function rel(iso){if(!iso)return'\u2014';var t=new Date(iso).getTime();if(isNaN(t))return'\u2014';var d=Date.now()-t;if(d<0)return'just now';if(d<45e3)return'just now';if(d<3600e3)return Math.round(d/60e3)+' min ago';if(d<86400e3)return Math.round(d/3600e3)+' h ago';return new Date(iso).toLocaleString();}
-function ageText(ms){if(ms==null)return'\u2014';var s=Math.round(ms/1000);if(s<5)return'just now';if(s<90)return s+'s old';if(s<5400)return Math.round(s/60)+' min old';if(s<172800)return Math.round(s/3600)+' h old';return Math.round(s/86400)+' days old';}
-function humanMs(ms){if(ms==null)return'\u2014';var s=Math.round(ms/1000);if(s<60)return s+'s';return (ms/60000).toFixed(ms<600000?1:0)+'m';}
+function rel(iso){if(typeof iso!=='string'||!iso)return DASH;var t=new Date(iso).getTime();if(!isFinite(t))return DASH;var d=Date.now()-t;if(d<45e3)return'just now';if(d<3600e3)return Math.round(d/60e3)+' min ago';if(d<86400e3)return Math.round(d/3600e3)+' h ago';return new Date(iso).toLocaleString();}
+function ageText(ms){var n=num(ms);if(n==null||n<0)return DASH;var s=Math.round(n/1000);if(s<5)return'just now';if(s<90)return s+'s old';if(s<5400)return Math.round(s/60)+' min old';if(s<172800)return Math.round(s/3600)+' h old';return Math.round(s/86400)+' days old';}
+function humanMs(ms){var n=num(ms);if(n==null||n<=0)return DASH;var s=Math.round(n/1000);if(s<60)return s+'s';return(n/60000).toFixed(n<600000?1:0)+'m';}
+function secs(ms){var n=num(ms);return n==null?DASH:(n/1000).toFixed(1)+'s';}
 function reduced(){try{return window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;}catch(e){return false;}}
-function api(path,body){var hd={'Content-Type':'application/json'};if(token)hd['Authorization']='Bearer '+token;
- return fetch(path,{method:body?'POST':'GET',headers:hd,body:body?JSON.stringify(body):undefined}).then(function(r){return r.json().then(function(j){j._http=r.status;return j;}).catch(function(){return {_http:r.status,success:false,error:'The server sent back something unreadable (status '+r.status+').'};});});}
+/* A poll can legitimately take the whole IMAP budget, so the wait is bounded per
+   endpoint rather than shared. The verb is explicit at every call site. */
+var TIME_BUDGET={'/api/status':15000,'/api/poll-now':300000,'/api/baseline':300000,'/api/test-forward':90000};
+function api(path,opts){
+ opts=opts||{};
+ var verb=String(opts.method||'').toUpperCase()||'GET';
+ var payload=(verb==='POST')?(opts.body||{}):null;
+ var ms=num(opts.timeoutMs)||TIME_BUDGET[path]||20000;
+ var hd={};if(payload)hd['Content-Type']='application/json';if(token)hd['Authorization']='Bearer '+token;
+ var ctrl=null;
+ if(typeof AbortController!=='undefined'){try{ctrl=new AbortController();}catch(e){ctrl=null;}}
+ var timer=null;
+ var p=new Promise(function(resolve,reject){
+  if(ms>0)timer=setTimeout(function(){try{if(ctrl)ctrl.abort();}catch(e){}
+   reject(new Error('sinka did not answer within '+((ms<1000)?'a second':(Math.round(ms/1000)+' seconds'))+'.'));},ms);
+  fetch(path,{method:verb,headers:hd,body:payload?JSON.stringify(payload):undefined,signal:ctrl?ctrl.signal:undefined})
+  .then(function(r){
+   if(!r||typeof r.json!=='function')return{_http:(r&&r.status)||0,success:false,error:'The server sent back something unreadable.'};
+   return r.json().then(function(j){return j;},function(){return null;})
+    .then(function(j){
+     if(j&&typeof j==='object'){try{j._http=r.status;}catch(e){}return j;}
+     /* A login page, a proxy error page or a bare number is not a status
+        object, so it is handed on as an envelope the caller can distrust. */
+     return{_http:r.status,success:false,error:'The server sent back something unreadable (status '+r.status+').'};});})
+  .then(resolve,reject);});
+ /* Teardown in .finally, so a rejection can never skip it and strand the buttons. */
+ return p.finally(function(){if(timer)clearTimeout(timer);});
+}
 function setFrozen(on){var b=document.body;if(b&&b.classList)b.classList.toggle('frozen',!!on);
  var f=el('frozen-note');if(f)f.hidden=!on;}
+/* The tile lookup compares data-user in JS: a "]", a backslash or a quote in an
+   address must never end up inside a CSS selector. */
+function findTile(user){
+ var host=el('dests'),list=[],i,n;
+ if(host&&typeof host.querySelectorAll==='function')list=host.querySelectorAll('.tile');
+ else if(typeof document.querySelectorAll==='function')list=document.querySelectorAll('#dests .tile');
+ for(i=0;i<list.length;i++){n=list[i];if(n&&n.getAttribute&&n.getAttribute('data-user')===user)return n;}
+ return null;}
 
 /* ---- results in plain words; the raw reply stays available but folded away ---- */
-function uniqReasons(fails){var seen={},out=[];for(var i=0;i<fails.length;i++){var r=String((fails[i]&&fails[i].error)||'no reason given');if(seen[r])continue;seen[r]=1;out.push(r);}return out;}
+function uniqReasons(fails){var seen={},out=[];for(var i=0;i<fails.length;i++){var r=str((fails[i]&&fails[i].error))||'no reason given';if(seen[r])continue;seen[r]=1;out.push(r);}return out;}
+/* A result counts as a copy only when it was really filed: a bounce or an
+   auto-reply comes back ok with a skipped reason and is filed away, not copied. */
+function reallyFiled(x){return !!(x&&x.ok&&!x.skipped);}
+function filedCount(res){var n=0;for(var i=0;i<res.length;i++)if(reallyFiled(res[i]))n++;return n;}
 function outcome(o,ctx){
  if(!o||typeof o!=='object')return'The server did not send back an answer at all.';
- if(o.busy)return'A check was already running, so nothing was started a second time.';
- if(o._http&&o._http>=400&&!o.error)return'The server answered with status '+o._http+' instead of doing the job.';
- if(o.error){var lead=ctx==='test'?'The test copy was not filed. ':(ctx==='base'?'The backlog was not skipped. ':(ctx==='poll'?'The check did not finish. ':'That did not work. '));return lead+String(o.error);}
- if(ctx==='test'&&o.dryRun)return'Practice mode, so nothing was really sent. sinka worked out that the test copy would go to '+(o.to||'the first inbox')+'.';
+ var msg=str(o.message);
+ if(o.busy)return(msg||'A check was already running')+', so nothing was started a second time.';
+ if(o.error){var lead=ctx==='test'?'The test copy was not filed. ':(ctx==='base'?'The backlog was not skipped. ':(ctx==='poll'?'The check did not finish. ':'That did not work. '));return lead+str(o.error)+(msg&&msg!==str(o.error)?' ('+msg+')':'');}
+ if(o._http&&o._http>=400)return msg?(msg+'.'):('The server answered with status '+o._http+' instead of doing the job.');
+ if(ctx==='test'&&o.dryRun)return'Practice mode, so nothing was really sent. sinka worked out that the test copy would go to '+(str(o.to)||'the first inbox')+'.';
  if(Array.isArray(o.results)){
-  var ok=0,fails=[];o.results.forEach(function(x){if(x&&x.ok)ok++;else fails.push(x);});
+  var ok=0,filed=0,fails=[];o.results.forEach(function(x){if(reallyFiled(x)){ok++;filed++;}else if(x&&x.skipped)filed++;else fails.push(x);});
   var n=o.results.length,head='Filed one test copy into '+n+' inbox'+(n===1?'':'es')+': '+ok+' accepted';
-  if(!fails.length)return head+', none refused.';
-  return head+', '+fails.length+' failed: '+uniqReasons(fails).join('; ')+'.';}
- if(o.baselined!=null)return'Marked '+o.baselined+' message'+(o.baselined===1?'':'s')+' as read and copied none of them. sinka carries on with whatever arrives next.';
- if(o.fetched!=null){
-  var f=o.fetched||0;
+  var away=(n-filed)?(', '+(n-filed)+' filed away, not a copy'):'';
+  if(!fails.length&&!away)return head+', none refused.';
+  if(!fails.length)return head+away+'.';
+  return head+away+', '+fails.length+' failed: '+uniqReasons(fails).join('; ')+'.';}
+ var base=num(o.baselined);
+ if(base!=null)return'Marked '+base+' message'+(base===1?'':'s')+' as read and copied none of them. sinka carries on with whatever arrives next.';
+ var f=num(o.fetched);
+ if(f!=null){
   if(!f)return'Looked in the source inbox just now. There was no new mail to copy.';
   var parts=['Found '+f+' new message'+(f===1?'':'s')];
-  if(o.replicated!=null)parts.push('filed '+(o.replicated||0)+' cop'+(o.replicated===1?'y':'ies'));
-  if(o.retried)parts.push('retried '+(o.retried===1?'1 copy':o.retried+' copies'));
-  if(o.skipped)parts.push('skipped '+(o.skipped));
-  if(o.pending)parts.push(o.pending+' still queued for the next check');
+  var rep=num(o.replicated);if(rep!=null)parts.push('filed '+rep+' cop'+(rep===1?'y':'ies'));
+  var ret=num(o.retried);if(ret)parts.push('retried '+(ret===1?'1 copy':ret+' copies'));
+  var sk=num(o.skipped);if(sk)parts.push('skipped '+sk);
+  var pend=num(o.pending);if(pend)parts.push(pend+' still queued for the next check');
   return parts.join(', ')+'.';}
- if(o.replicated!=null)return'Filed '+(o.replicated||0)+' cop'+(o.replicated===1?'y':'ies')+'.';
- return'The server accepted that and said nothing more.';}
+ var rep2=num(o.replicated);
+ if(rep2!=null)return'Filed '+rep2+' cop'+(rep2===1?'y':'ies')+'.';
+ return msg?msg:'The server accepted that and said nothing more.';}
 function showMsg(o,ctx){var box=el('result');if(!box)return;box.hidden=false;
  setText('result-out',outcome(o,ctx));
  var meta=el('result-meta');if(meta){meta.textContent='';meta.hidden=true;}
@@ -869,9 +927,13 @@ function setBusy(b,btn,label){var r=el('result');if(r)r.setAttribute('aria-busy'
 function runAction(btn,label,ctx,fn,thenRefresh){
  setBusy(true,btn,label);
  var p;try{p=Promise.resolve(fn());}catch(e){p=Promise.reject(e);}
- return p.then(function(o){showMsg(o,ctx);return thenRefresh?refresh():null;})
-  .catch(function(e){showMsg({success:false,error:String(e&&e.message?e.message:e)},ctx);})
-  .then(function(){setBusy(false,btn);focusResult();});}
+ return p.then(function(o){showMsg(o,ctx);return thenRefresh?refresh():null;},
+              function(e){showMsg({success:false,error:str(e&&e.message)||'the request did not finish'},ctx);})
+  .then(function(){return null;},
+        function(e){showMsg({success:false,error:'This page could not read the reply: '+(str(e&&e.message)||'unknown error')},ctx);})
+  /* Teardown in .finally, so a rejection anywhere above can never leave every
+     button on the page disabled. */
+  .finally(function(){setBusy(false,btn);focusResult();});}
 
 /* ---- "Start here" guide: shown until it is dismissed, then reopenable from the footer ---- */
 function guideHidden(){try{return localStorage.getItem(GUIDE_KEY)==='1';}catch(e){return false;}}
@@ -882,57 +944,134 @@ function openGuide(){setGuide(true);var g=el('guide');if(g&&g.scrollIntoView){tr
 var stats={};
 function statHits(user){var s=stats[user]||(stats[user]={total:0,hits:[]});var cut=Date.now()-60000;s.hits=s.hits.filter(function(t){return t>cut;});return s;}
 function justNow(user){return !!(flashAt[user]&&(Date.now()-flashAt[user])<90000);}
-function sparkHtml(user){var s=statHits(user);var out='';for(var i=0;i<12;i++){var t0=Date.now()-(12-i)*5000,t1=t0+5000,n=0;for(var j=0;j<s.hits.length;j++){if(s.hits[j]>=t0&&s.hits[j]<t1)n++;}out+='<i'+(n?' class="hot"':'')+' style="height:'+Math.min(16,2+n*4)+'px"></i>';}return out;}
+/* The bars are decorative and they only change when the bucketed hit counts do,
+   so an unchanged redraw reuses the markup it already built. */
+function sparkHtml(user){
+ var s=statHits(user),now=Date.now(),b=[],i,j,key='';
+ for(i=0;i<12;i++){var t0=now-(12-i)*5000,t1=t0+5000,n=0;for(j=0;j<s.hits.length;j++){if(s.hits[j]>=t0&&s.hits[j]<t1)n++;}b.push(n);key+=n;}
+ var cached=sparkCache[user];
+ if(cached&&cached.key===key)return cached.html;
+ var out='';
+ for(i=0;i<12;i++){out+='<i aria-hidden="true"'+(b[i]?' class="hot"':'')+' style="height:'+Math.min(16,2+b[i]*4)+'px"></i>';}
+ sparkCache[user]={key:key,html:out};
+ return out;}
 function tileHtml(a,cls,count,unit,note,jn){
- var j=!!jn;return '<div class="tile '+cls+(j?' jn':'')+'" data-user="'+h(a)+'" title="'+h(a)+'">'
+ var j=!!jn;return '<div class="tile '+cls+(j?' jn':'')+'" data-user="'+h(a)+'">'
   +'<div class="t-name">'+h(a)+'</div>'
-  +'<div class="t-foot"><span class="t-count">'+count+'</span><span class="t-unit">'+h(unit)+'</span></div>'
+  +'<div class="t-foot"><span class="t-count">'+h(count)+'</span><span class="t-unit">'+h(unit)+'</span></div>'
   +((note||j)?'<div class="t-note'+(j?' jn':'')+'">'+(j?'copied just now':h(note))+'</div>':'')
   +'<div class="spark">'+sparkHtml(a)+'</div></div>';}
 function renderDests(d){
-// Group labels here are the source of truth; the server's first paint mirrors them.
- var list=d.destinations||[],on=d.sinkUsers||[],off=d.disabledSinks||[],auto=d.autoDisabledSinks||[];
- var pending=(Array.isArray(d.pendingSinks)?d.pendingSinks:[]).filter(function(p){return p&&p.to;});
+ // Group labels here are the source of truth; the server's first paint mirrors them.
+ var list=arr(d.destinations),on=arr(d.sinkUsers),off=arr(d.disabledSinks),auto=arr(d.autoDisabledSinks);
+ var pending=arr(d.pendingSinks).filter(function(p){return p&&p.to;});
  var onS={},offS={},autoS={};on.forEach(function(a){onS[a]=1;});off.forEach(function(a){offS[a]=1;});auto.forEach(function(a){autoS[a]=1;});
- function grp(title,arr,cls){if(!arr.length)return '';return '<div class="grp"><span class="grp-k">'+h(title)+'</span><span class="grp-n">'+arr.length+'</span></div><div class="tiles">'+arr.map(function(a){return tileHtml(a,cls,statHits(a).total,'copies','',justNow(a));}).join('')+'</div>';}
+ /* Every group is filtered first, and the heading counts the very list it draws,
+    so the number can never disagree with the tiles under it. */
+ function grp(title,items,cls){
+  var rows=arr(items);
+  if(!rows.length)return '';
+  return '<div class="grp"><span class="grp-k">'+h(title)+'</span><span class="grp-n">'+rows.length+'</span></div><div class="tiles">'
+   +rows.map(function(a){return tileHtml(a,cls,statHits(a).total,'copies','',justNow(a));}).join('')+'</div>';}
  function retryGrp(){
   if(!pending.length)return '';
-  var tiles=pending.map(function(p){var n=Number(p.attempts)||0;return tileHtml(p.to,'retry',n,n===1?'try':'tries','Waiting for the next check',false);}).join('');
+  var tiles=pending.map(function(p){var n=num(p.attempts)||0;return tileHtml(p.to,'retry',n,n===1?'try':'tries','Waiting for the next check',false);}).join('');
   return '<div class="grp retry"><span class="grp-k">Trying again</span><span class="grp-n">'+pending.length+'</span></div><div class="tiles">'+tiles+'</div>'
    +'<p class="pipe-foot">'+pending.length+' cop'+(pending.length===1?'y':'ies')+' could not be filed yet, so sinka keeps them queued and retries on the next check.</p>';}
+ var liveRows=list.filter(function(a){return !!onS[a]&&!autoS[a];});
+ var autoRows=list.filter(function(a){return !!autoS[a];});
+ var offRows=list.filter(function(a){return !!offS[a];});
+ var missRows=list.filter(function(a){return !onS[a]&&!offS[a];});
  var node=el('dests');if(!node)return;
- node.innerHTML=grp('Copying right now',list.filter(function(a){return onS[a]&&!autoS[a];}),'on')
-  +grp('Sign-in failed, waiting for you',list.filter(function(a){return autoS[a];}),'auto')
-  +grp('Paused by you',list.filter(function(a){return offS[a];}),'off')
-  +grp('No sign-in details yet',list.filter(function(a){return !onS[a]&&!offS[a];}),'miss')
+ node.innerHTML=grp('Copying right now',liveRows,'on')
+  +grp('Sign-in failed, waiting for you',autoRows,'auto')
+  +grp('Paused by you',offRows,'off')
+  +grp('No sign-in details yet',missRows,'miss')
   +retryGrp()
   +'<p class="pipe-foot">Nothing is copied to a tile until a copy really lands, so every count starts at zero.</p>';
- var working=list.filter(function(a){return onS[a]&&!autoS[a];}).length;
- setText('d-count',list.length?(working+' of '+list.length+' inboxes copying right now'):'No team inboxes listed yet');
+ setText('d-count',malformedFields(d).length?'the answer was not a list this page can read':(list.length?(liveRows.length+' of '+list.length+' inboxes copying right now'):'No team inboxes listed yet'));
 }
+/* Which "what just happened" rows the operator had opened, so a 30s redraw does
+   not snap them shut under the pointer. */
+function openRowKeys(){
+ var keys={},n=el('details'),i,d;
+ if(!n||typeof n.querySelectorAll!=='function')return keys;
+ var list=n.querySelectorAll('details[data-k]');
+ for(i=0;i<list.length;i++){d=list[i];if(d&&d.open)keys[d.getAttribute('data-k')]=1;}
+ return keys;}
+function restoreOpenRows(keys){
+ var n=el('details'),i,d,k;
+ if(!keys||!n||typeof n.querySelectorAll!=='function')return;
+ var list=n.querySelectorAll('details[data-k]');
+ for(i=0;i<list.length;i++){d=list[i];k=d&&d.getAttribute?d.getAttribute('data-k'):null;if(k&&keys[k])d.open=true;}}
+function resultVerdict(x){
+ if(!x||typeof x!=='object')return'not filed: unknown reason';
+ if(x.skipped)return'filed away, not a copy ('+str(x.skipped)+')';
+ if(x.ok)return'filed'+(x.via?' ('+str(x.via)+')':'');
+ return'not filed: '+(str(x.error)||'unknown reason');}
 function renderDetails(r){
  var node=el('details');if(!node)return;
- if(!r.details||!r.details.length){node.innerHTML='<p class="empty">Nothing was copied in the last check. New mail shows up here the moment it arrives.</p>';return;}
- var rows=r.details.map(function(m){
-  var res=m.results||[],ok=res.filter(function(x){return x.ok;}).length;
-  var per=res.map(function(x){var verdict=x.ok?('filed'+(x.via?' ('+x.via+')':'')):(x.skipped?'skipped: '+x.skipped:'not filed: '+(x.error||'unknown reason'));return '<li>'+h(x.to)+' &mdash; '+h(verdict)+'</li>';}).join('');
-  return '<tr><td class="id"><code>'+h(String(m.messageId||'').slice(0,28))+'</code></td>'
-   +'<td><span class="subj">'+h(m.subject||'(no subject)')+'</span><span class="fr">from '+h(m.from||'an unknown sender')+'</span></td>'
-   +'<td><details><summary>'+ok+' of '+res.length+' filed</summary><ul>'+per+'</ul></details></td></tr>';
+ var keys=openRowKeys();
+ var det=arr(r.details);
+ if(!det.length){node.innerHTML='<p class="empty">Nothing was copied in the last check. New mail shows up here the moment it arrives.</p>';return;}
+ var rows=det.map(function(m,i){
+  if(!m||typeof m!=='object')m={};
+  var res=Array.isArray(m.results)?m.results:[];
+  var ok=filedCount(res);
+  var per=res.map(function(x){return '<li>'+h(str(x&&x.to)||'an unnamed inbox')+' &mdash; '+h(resultVerdict(x))+'</li>';}).join('');
+  var ref=str(m.messageId)||('message '+(i+1)),k=ref+'|'+res.length;
+  return '<tr><td class="id"><code>'+h(ref.slice(0,28))+'</code></td>'
+   +'<td><span class="subj">'+h(str(m.subject)||'(no subject)')+'</span><span class="fr">from '+h(str(m.from)||'an unknown sender')+'</span></td>'
+   +'<td><details data-k="'+h(k)+'"><summary>'+ok+' of '+res.length+' filed</summary><ul>'+per+'</ul></details></td></tr>';
  }).join('');
  node.innerHTML='<table><caption class="vh">Messages from the most recent check</caption><thead><tr><th scope="col">Reference</th><th scope="col">Message</th><th scope="col">Copies</th></tr></thead><tbody>'+rows+'</tbody></table>';
+ restoreOpenRows(keys);
 }
-function renderHero(d,r){
+/* Coverage, not configuration: a count of configured sinks says nothing about
+   whether every listed inbox has sign-in details, so the missing ones are
+   worked out per address. The hero, the alerts, the fix card and the checklist
+   all read this one answer, so they cannot disagree with each other. */
+function coverage(d){
+ var dests=arr(d.destinations);
+ var have=(typeof d.sinksConfigured==='number'&&isFinite(d.sinksConfigured))?d.sinksConfigured:arr(d.sinkUsers).length;
+ var onS={},autoS={},i,a;
+ arr(d.sinkUsers).forEach(function(x){onS[x]=1;});
+ arr(d.autoDisabledSinks).forEach(function(x){autoS[x]=1;});
+ var covered=0,missing=[];
+ for(i=0;i<dests.length;i++){a=dests[i];if(onS[a]&&!autoS[a])covered++;else missing.push(a);}
+ var ready=(Array.isArray(d.sinkUsers)&&dests.length)?covered:Math.min(have,dests.length);
+ var missN=Math.max(0,dests.length-ready);
+ return{total:dests.length,have:have,ready:Math.min(ready,dests.length),missing:missing,missingCount:missN,
+  refused:arr(d.autoDisabledSinks).length,paused:arr(d.disabledSinks).length};}
+function needLine(n){return n===1?'1 inbox needs your help':n+' inboxes need your help';}
+/* A field that is present but is not the list the server documents. Saying "no
+   team inboxes" about a field this page cannot read would be inventing a fact, so
+   these are named instead. Never an outage: the answer did arrive. */
+function malformedFields(d){
+ var bad=[],r=(d.lastResult&&typeof d.lastResult==='object')?d.lastResult:null;
+ if(d.destinations!=null&&!Array.isArray(d.destinations))bad.push('destinations');
+ if(d.sinkUsers!=null&&!Array.isArray(d.sinkUsers))bad.push('sinkUsers');
+ if(d.disabledSinks!=null&&!Array.isArray(d.disabledSinks))bad.push('disabledSinks');
+ if(d.autoDisabledSinks!=null&&!Array.isArray(d.autoDisabledSinks))bad.push('autoDisabledSinks');
+ if(d.pendingSinks!=null&&!Array.isArray(d.pendingSinks))bad.push('pendingSinks');
+ if(r&&r.details!=null&&!Array.isArray(r.details))bad.push('lastResult.details');
+ return bad;}
+function malformedLine(bad){return 'The server sent an answer this page cannot read in full ('+bad.join(', ')+' is not a list), so this page will not guess what it means.';}
+function renderHero(d,r,cov){
  var hero=el('hero'),face=el('hero-face'),t=el('hero-t'),s=el('hero-s');
  if(!hero||!face||!t||!s)return;
  var cls='ok',symbol='\u25cf',line='Everything is working',sub='New mail is being copied into your team inboxes.';
- if(d.setupNeeded){cls='err';symbol='\u2715';line='One more step needed';sub='sinka cannot copy anything until its own sign-in details are set. The details are below.';}
+ var bad=malformedFields(d);
+ if(!stateKnown(d)){cls='warn';symbol='\u25cc';line='The server has not told this page anything yet';sub='sinka answered, but the reply carried no numbers. This page will not invent any; it keeps asking.';}
+ else if(bad.length){cls='warn';symbol='\u25d0';line='The server sent an answer this page cannot read in full';sub=malformedLine(bad)+' The numbers below are only the ones it could read.';}
+ else if(d.setupNeeded){cls='err';symbol='\u2715';line='One more step needed';sub='sinka cannot copy anything until its own sign-in details are set. The details are below.';}
  else if(r.error){cls='err';symbol='\u2715';line='The last check did not finish';sub='sinka is waiting and trying again on its own, a little longer each time. The details are below.';}
- else if(d.autoDisabledSinks&&d.autoDisabledSinks.length){cls='warn';symbol='\u25d0';line=(d.autoDisabledSinks.length===1?'1 inbox needs':' '+d.autoDisabledSinks.length+' inboxes need')+' your help';sub='A sign-in was refused. Fix it, then choose Send a test copy.';}
- else if(!d.sinksConfigured){cls='warn';symbol='\u25d0';line='No team inboxes yet';sub='Add at least one team inbox in the server settings, then send a test copy to check it.';}
+ else if(cov.refused){cls='warn';symbol='\u25d0';line=needLine(cov.refused);sub='A sign-in was refused. Fix it, then choose Send a test copy.';}
+ else if(cov.missingCount){cls='warn';symbol='\u25d0';line=needLine(cov.missingCount);sub=cov.missingCount+' of the '+cov.total+' listed inboxes'+(cov.missingCount===1?' has':'es have')+' no sign-in details yet, so nothing is copied there. Add the app password, then send a test copy.';}
+ else if(!cov.total||!d.sinksConfigured){cls='warn';symbol='\u25d0';line='No team inboxes yet';sub='Add at least one team inbox in the server settings, then send a test copy to check it.';}
  else if(!d.lastPollAt){cls='warn';symbol='\u25cc';line='Starting up';sub='The first check runs in a few seconds.';}
- else if(humanMs(d.pollIntervalMs)==='\u2014'){cls='warn';symbol='\u25cc';line='Waiting for the first check';sub='This page cannot see how often checks run yet.';}
- var none=!(d.destinations&&d.destinations.length);
+ else if(humanMs(d.pollIntervalMs)===DASH){cls='warn';symbol='\u25cc';line='Waiting for the first check';sub='This page cannot see how often checks run yet.';}
+ var none=!cov.total;
  var tail=(none&&!/team inbox/i.test(sub))?' There are no team inboxes listed yet.':'';
  var key=cls+'|'+line;                       // verdict changes are announced, repeats are not
  if(key!==lastVerdict){lastVerdict=key;face.textContent=symbol;t.textContent=line;}
@@ -948,136 +1087,228 @@ function ck(n,on,need,title,sub){
   +'<div><b>'+h(title)+'</b><span class="vh"> &mdash; '+(on?'done':'not done yet')+'. </span>'
   +'<span class="ck-s">'+h(sub)+'</span></div></li>';}
 /* The checklist only ever states what is really true, so a healthy install sees three ticks.
-   With no answer from sinka it says so instead of guessing or staying blank. */
+   With no answer from sinka, or with an answer that carried no facts at all, it says so
+   instead of guessing or staying blank. */
 var STEP_TITLES=['sinka is signed in to the source inbox','Team inboxes can sign in','A copy has really landed'];
+var NOT_TOLD='The server has not told this page anything yet, so this page cannot say.';
+/* "Answered but silent" is not "fine": without these fields there is nothing to assert. */
+function stateKnown(d){
+ if(!d||typeof d!=='object')return false;
+ return ('setupNeeded' in d)||!!d.startedAt||!!d.lastPollAt||d.sinksConfigured!=null||arr(d.destinations).length>0||!!d.seenCount;}
 function renderSteps(d,r,unknown){
  var box=el('steps');if(!box)return;
- if(unknown){box.innerHTML=[0,1,2].map(function(i){return ck(i+1,false,false,STEP_TITLES[i],unknown);}).join('');return;}
- var dests=(d.destinations||[]).length;
- var have=typeof d.sinksConfigured==='number'?d.sinksConfigured:(Array.isArray(d.sinkUsers)?d.sinkUsers.length:0);
- var refused=(d.autoDisabledSinks||[]).length;
- var filed=(r.replicated||0)+(r.retried||0),ev=0;
- if(Array.isArray(r.details))r.details.forEach(function(m){(m.results||[]).forEach(function(x){if(x&&x.ok)ev++;});});
+ if(!r||typeof r!=='object')r={};
+ var why=unknown||(!stateKnown(d)?NOT_TOLD:'');
+ if(why){box.innerHTML=[0,1,2].map(function(i){return ck(i+1,false,false,STEP_TITLES[i],why);}).join('');return;}
+ var cov=coverage(d);
+ var dests=cov.total;
+ var refused=cov.refused;
+ var filed=(num(r.replicated)||0)+(num(r.retried)||0),ev=0;
+ arr(r.details).forEach(function(m){arr(m&&m.results).forEach(function(x){if(reallyFiled(x))ev++;});});
  var rows=[];
  rows.push(ck(1,!d.setupNeeded,!!d.setupNeeded,
   d.setupNeeded?'sinka is not signed in yet':'sinka is signed in to the source inbox',
-  d.setupNeeded?'Fill in sinka\'s own sign-in details in the server settings. Until then it cannot read the source inbox.':'sinka can read the source inbox, so it is ready to copy.'));
- var missN=dests-have;
+  d.setupNeeded?"Fill in sinka's own sign-in details in the server settings. Until then it cannot read the source inbox.":'sinka can read the source inbox, so it is ready to copy.'));
+ var missN=cov.missingCount;
  rows.push(ck(2,dests>0&&missN<=0&&!refused,dests===0||missN>0||refused>0,
-  dests?(have+' of '+dests+' inboxes can sign in'):'No team inboxes listed yet',
+  dests?(cov.ready+' of '+dests+' inboxes can sign in'):'No team inboxes listed yet',
   !dests?'Add at least one team inbox in the server settings, then send a test copy.'
   :(refused?refused+' sign-in'+(refused===1?' was':'s were')+' refused, so copying is paused there. Fix the password, then choose Send a test copy.'
   :(missN>0?missN+' inbox'+(missN===1?' has':'es have')+' no sign-in details yet.':'Every listed inbox is ready to receive copies.'))));
- var seen=Number(d.seenCount)||0,landed=(seen>0)||filed>0||ev>0;
+ var seen=num(d.seenCount)||0,landed=(seen>0)||filed>0||ev>0;
  rows.push(ck(3,landed,false,
   landed?'A copy has really landed':'No copy delivered yet',
   landed?'At least one message was filed into a team inbox, so the copying works end to end.'
   :'Nothing has come in to the source inbox yet, so there is nothing to copy. This is normal until mail arrives.'));
  box.innerHTML=rows.join('');
 }
-function renderFix(d,r){
+function renderFix(d,cov){
  var w=el('fix-what');if(!w)return;var line;
- if(d.setupNeeded)line='sinka\'s own sign-in details are missing. Fill them in on the server, then come back and send a test copy.';
- else if((d.autoDisabledSinks||[]).length)line='A sign-in was refused for '+(d.autoDisabledSinks||[]).join(', ')+'. Fix the password on the server, then send a test copy to switch copying back on.';
- else if(!d.sinksConfigured)line='No team inbox is ready. Add one in the server settings, then send a test copy to check it.';
- else if((d.disabledSinks||[]).length)line='Nothing to fix. '+d.disabledSinks.length+' inbox'+(d.disabledSinks.length===1?' is':'es are')+' paused on purpose.';
+ var bad=malformedFields(d);
+ if(bad.length)line=malformedLine(bad)+' Fix the server, then send a test copy.';
+ else if(!stateKnown(d))line='The server has not told this page anything yet, so there is nothing to suggest until it answers with real numbers.';
+ else if(d.setupNeeded)line="sinka's own sign-in details are missing. Fill them in on the server, then come back and send a test copy.";
+ else if(cov.refused)line='A sign-in was refused for '+arr(d.autoDisabledSinks).join(', ')+'. Fix the password on the server, then send a test copy to switch copying back on.';
+ else if(!cov.total||!d.sinksConfigured)line='No team inbox is ready. Add one in the server settings, then send a test copy to check it.';
+ else if(cov.missingCount)line=cov.missingCount+' listed inbox'+(cov.missingCount===1?' has':'es have')+' no sign-in details yet, so nothing is copied there. Add the app password on the server, then send a test copy.';
+ else if(cov.paused)line='Nothing to fix. '+cov.paused+' inbox'+(cov.paused===1?' is':'es are')+' paused on purpose.';
  else if(d.consecutiveErrors)line='Nothing to fix. sinka is waiting longer between tries after a failed check.';
  else line='Nothing needs fixing right now. A test copy is the quickest way to prove copying works.';
  setText('fix-what',line);}
+/* A stable token for one distinct result. /api/status keeps returning the same
+   lastResult until the next poll, so a fold keyed on anything less than this
+   would count one delivered message again on every 30s redraw. */
+function resultToken(d,r){
+ var det=arr(r.details),ids=[],i;
+ for(i=0;i<det.length;i++)ids.push(str(det[i]&&det[i].messageId)||String(i));
+ return str(d.lastPollAt)+'|'+str(r.ms)+'|'+det.length+'|'+ids.join(',');}
+/* One delivered copy, one increment, one lasting mark. Returns the inboxes that
+   this call advanced, so only they flash. A message already counted inside the
+   dedupe window is not counted again, whatever result carries it. */
+var DEDUPE_MS=600000,countedMsgs={};
+function foldCopies(r){
+ var det=arr(r.details),now=Date.now(),users=[],i,j,k;
+ for(k in countedMsgs)if(countedMsgs[k]<now-DEDUPE_MS)delete countedMsgs[k];
+ for(i=0;i<det.length;i++){
+  var msg=det[i],res=arr(msg&&msg.results);
+  for(j=0;j<res.length;j++){
+   var x=res[j];
+   if(!reallyFiled(x)||!x.to)continue;
+   k=str(msg&&msg.messageId)+'|'+str(x.to);
+   if(countedMsgs[k])continue;
+   countedMsgs[k]=now;
+   var st=statHits(x.to);st.total++;st.hits.push(now);flashAt[x.to]=now;
+   if(users.indexOf(x.to)<0)users.push(x.to);
+  }}
+ return users;}
 function render(d){
- d=d||{};
- var r=d.lastResult||{};
+ d=(d&&typeof d==='object')?d:{};
+ var r=(d.lastResult&&typeof d.lastResult==='object')?d.lastResult:{};
+ var known=stateKnown(d),cov=coverage(d),bad=malformedFields(d);
  setText('upd',d.lastPollAt?('Updated '+rel(d.lastPollAt)+'.'):'');
- setText('c-last',d.lastPollAt?rel(d.lastPollAt):'\u2014');
- setText('c-last-s',(r.reason||'')+(r.ms!=null?' \u00b7 took '+(r.ms/1000).toFixed(1)+'s':'')+(r.error?' \u00b7 did not finish':''));
- setText('c-fetched',r.fetched!=null?String(r.fetched):'\u2014');
- setText('c-repl',r.replicated!=null?String(r.replicated):'\u2014');
- setText('c-skip',r.skipped!=null?String(r.skipped):'\u2014');
- setText('c-seen',d.seenCount!=null?String(d.seenCount):'\u2014');
+ setText('c-last',d.lastPollAt?rel(d.lastPollAt):DASH);
+ setText('c-last-s',str(r.reason)+(r.ms!=null?' \u00b7 took '+secs(r.ms):'')+(r.error?' \u00b7 did not finish':''));
+ setText('c-fetched',r.fetched!=null?numText(r.fetched):DASH);
+ setText('c-repl',r.replicated!=null?numText(r.replicated):DASH);
+ setText('c-skip',r.skipped!=null?numText(r.skipped):DASH);
+ setText('c-seen',d.seenCount!=null?numText(d.seenCount):DASH);
  setText('c-int',humanMs(d.pollIntervalMs));
  setText('c-up',d.startedAt?('this page has been open since '+new Date(d.startedAt).toLocaleTimeString()):'');
- setText('c-rail-last',d.lastPollAt?rel(d.lastPollAt):'\u2014');
+ setText('c-rail-last',d.lastPollAt?rel(d.lastPollAt):DASH);
  setText('c-rail-int',humanMs(d.pollIntervalMs));
  paintRail();
- setText('b-sinks','Team inboxes set up: '+(d.sinksConfigured!=null?d.sinksConfigured:'?'));
- var replBox=document.querySelector('[data-metric="repl"]');if(replBox)replBox.className='metric'+(r.replicated>0?' good':(r.replicated===0?' zero':''));
+ setText('b-sinks','Team inboxes set up: '+(num(d.sinksConfigured)!=null?num(d.sinksConfigured):'?'));
+ setText('fix-to',testTargetLine());
+ var replBox=document.querySelector('[data-metric="repl"]');
+ if(replBox)replBox.className='metric'+((num(r.replicated)||0)>0?' good':((num(r.replicated)===0)?' zero':''));
  // Note the real copies first, so a tile can carry a lasting "copied just now" mark
  // (the 800ms flash is motion, and motion is not allowed to be the only signal).
- if(Array.isArray(r.details)&&r.details.length){r.details.forEach(function(m){(m.results||[]).forEach(function(x){if(x.ok){var st=statHits(x.to);st.total++;st.hits.push(Date.now());flashAt[x.to]=Date.now();}});});}
+ // Idempotent: a result already folded in is never folded in twice.
+ var tok=resultToken(d,r),fresh=null;
+ if(tok!==countedToken){countedToken=tok;fresh=foldCopies(r);}
  renderDests(d);
- if(Array.isArray(r.details)&&r.details.length&&!reduced()){var okUsers={};r.details.forEach(function(m){(m.results||[]).forEach(function(x){if(x.ok)okUsers[x.to]=1;});});
-  var flashed=Object.keys(okUsers);if(flashed.length){var tiles=[];flashed.forEach(function(u){var t=document.querySelector('#dests .tile[data-user="'+String(u).replace(/"/g,'\\"')+'"]');if(t){t.classList.add('flash');tiles.push(t);}});setTimeout(function(){tiles.forEach(function(t){t.classList.remove('flash');});},800);}}
- if(r.fetched>0){var cd2=el('conduit');if(cd2){cd2.classList.add('live');setTimeout(function(){cd2.classList.remove('live');},2500);}}
+ if(fresh&&fresh.length&&!reduced()){var tiles=[];
+  for(var fi=0;fi<fresh.length;fi++){var tn=findTile(fresh[fi]);if(tn){tn.classList.add('flash');tiles.push(tn);}}
+  if(tiles.length)setTimeout(function(){for(var ti=0;ti<tiles.length;ti++)tiles[ti].classList.remove('flash');},800);}
+ if((num(r.fetched)||0)>0){var cd2=el('conduit');if(cd2){cd2.classList.add('live');setTimeout(function(){cd2.classList.remove('live');},2500);}}
  var dot=el('srcdot'),ps=el('pipe-state');
- if(dot){dot.classList.remove('dead');dot.classList.toggle('idle',!!(d.setupNeeded||r.error||d.consecutiveErrors>0));
-  if(ps)ps.textContent=d.setupNeeded?'not set up yet':(r.error?'last check failed':'checking on its own');}
- renderHero(d,r);
+ if(dot){dot.classList.remove('dead');dot.classList.toggle('idle',!!(!known||bad.length||d.setupNeeded||r.error||(num(d.consecutiveErrors)||0)>0));
+  if(ps)ps.textContent=!known?'the server said nothing':(bad.length?'answer not fully readable':(d.setupNeeded?'not set up yet':(r.error?'last check failed':'checking on its own')));}
+ renderHero(d,r,cov);
  var al=[];
+ if(bad.length)al.push('<div class="alert warn"><b>This page cannot read the whole answer.</b> '+h(malformedLine(bad))+'</div>');
+ if(!known)al.push('<div class="alert warn"><b>The server has not told this page anything yet.</b> It answered, but the reply carried no inbox list, no check times and no counts, so nothing on this page can be trusted yet. It keeps asking every '+REFRESH_SECS+' seconds.</div>');
  if(d.setupNeeded)al.push('<div class="alert err"><b>One more step needed.</b> sinka cannot copy any mail until its own sign-in details are set. Details: <code>'+h(d.setupNeeded)+'</code></div>');
- if(!d.sinksConfigured)al.push('<div class="alert warn"><b>Nothing is being copied yet.</b> No team inbox is ready. Add one in the server settings, then choose Send a test copy to check it.</div>');
- if(d.disabledSinks&&d.disabledSinks.length)al.push('<div class="alert warn"><b>Paused on purpose.</b> '+d.disabledSinks.map(h).join(', ')+' will not receive copies until you take the leading dash off the address in the server settings.</div>');
- if(d.autoDisabledSinks&&d.autoDisabledSinks.length)al.push('<div class="alert err"><b>Sign-in was refused.</b> '+d.autoDisabledSinks.map(h).join(', ')+' &mdash; the password was rejected or revoked. Fix it, then choose Send a test copy to switch copying back on.</div>');
- if(r.error)al.push('<div class="alert err"><b>The last check did not finish</b> ('+h(r.reason||'automatic')+'): <code>'+h(r.error)+'</code></div>');
- if(d.consecutiveErrors)al.push('<div class="alert note"><b>Being patient.</b> '+d.consecutiveErrors+' check'+(d.consecutiveErrors===1?'':'s')+' in a row did not finish, so sinka is waiting longer between tries, up to an hour.</div>');
- if(!al.length&&!(d.destinations&&d.destinations.length))al.push('<div class="alert warn"><b>No team inboxes listed.</b> There is nowhere to put copies yet. Add at least one inbox in the server settings.</div>');
+ if(!bad.length&&(!cov.total||!d.sinksConfigured))al.push('<div class="alert warn"><b>Nothing is being copied yet.</b> No team inbox is ready. Add one in the server settings, then choose Send a test copy to check it.</div>');
+ if(cov.paused)al.push('<div class="alert warn"><b>Paused on purpose.</b> '+arr(d.disabledSinks).map(h).join(', ')+' will not receive copies until you take the leading dash off the address in the server settings.</div>');
+ if(cov.missingCount)al.push('<div class="alert warn"><b>'+h(needLine(cov.missingCount))+'.</b> '+cov.missing.map(h).join(', ')+' &mdash; no sign-in details yet, so nothing is copied there. Add the app password for each, then choose Send a test copy.</div>');
+ if(cov.refused)al.push('<div class="alert err"><b>Sign-in was refused.</b> '+arr(d.autoDisabledSinks).map(h).join(', ')+' &mdash; the password was rejected or revoked. Fix it, then choose Send a test copy to switch copying back on.</div>');
+ if(r.error)al.push('<div class="alert err"><b>The last check did not finish</b> ('+h(str(r.reason)||'automatic')+'): <code>'+h(r.error)+'</code></div>');
+ if(num(d.consecutiveErrors))al.push('<div class="alert note"><b>Being patient.</b> '+num(d.consecutiveErrors)+' check'+(num(d.consecutiveErrors)===1?'':'s')+' in a row did not finish, so sinka is waiting longer between tries, up to an hour.</div>');
+ if(!al.length&&!bad.length&&!cov.total)al.push('<div class="alert warn"><b>No team inboxes listed.</b> There is nowhere to put copies yet. Add at least one inbox in the server settings.</div>');
  renderAlerts(al);
- renderFix(d,r);
- renderSteps(d,r);
+ renderFix(d,cov);
+ renderSteps(d,r,bad.length?('The server sent '+bad.join(', ')+' in a form this page cannot read, so it cannot say.'):'');
  renderDetails(r);
 }
-function paintRail(){setText('c-rail-age',lastGoodAt?ageText(Date.now()-lastGoodAt):'\u2014');}
+function paintRail(){setText('c-rail-age',lastGoodAt?ageText(Date.now()-lastGoodAt):DASH);}
 function answeredAgo(){return lastGoodAt?ageText(Date.now()-lastGoodAt):'never';}
 function noteBack(text){var n=el('hero-back');if(!n)return;n.textContent=text;n.hidden=false;
  if(backTimer)clearTimeout(backTimer);backTimer=setTimeout(function(){n.hidden=true;},8000);}
-/* The server is gone. Say so, stop the numbers pretending to be live, keep retrying. */
-function netDown(e){
+/* The server is gone, or it answered with something this page must not trust.
+   Say so, stop the numbers pretending to be live, keep retrying. */
+function netDown(e,kind){
  if(!netDownAt)netDownAt=Date.now();
- var why=String((e&&e.message)||e||'no answer');
+ var why=str(e&&e.message)||str(e)||'no answer';
+ var auth=(kind==='auth');
  var hero=el('hero');
  if(hero)hero.className='card hero down';
  var t=el('hero-t'),s=el('hero-s'),face=el('hero-face');
- var line="Can't reach sinka \u2014 the numbers below may be out of date";
- var sub='This page cannot talk to sinka, so nothing below is moving: these are the numbers from the last time it answered. It keeps trying every '+REFRESH_SECS+' seconds.';
+ var line=auth?(token?'The private token was not accepted \u2014 no numbers to show':'Paste your private token to see live numbers')
+  :"Can't reach sinka \u2014 the numbers below may be out of date";
+ var sub=auth?(token?'sinka answered, but it would not show its numbers to this tab. Paste the private token again in step 1 below, then refresh.'
+  :'sinka answered, but it will not show its numbers without the private token for this dashboard. Paste it in step 1 below: this page keeps it in this tab only, never on disk.')
+  :'This page cannot talk to sinka, so nothing below is moving: these are the numbers from the last time it answered. It keeps trying every '+REFRESH_SECS+' seconds.';
  if(t&&s&&t.textContent!==line){if(face)face.textContent='\u2715';t.textContent=line;s.textContent=sub;}
  lastVerdict='down';
  setFrozen(true);
  var dot=el('srcdot');if(dot){dot.classList.remove('idle');dot.classList.add('dead');}
- setText('pipe-state',lastGoodAt?('out of reach, numbers frozen'):'cannot reach sinka');
+ setText('pipe-state',auth?'waiting for the private token':(lastGoodAt?'out of reach, numbers frozen':'cannot reach sinka'));
  setText('cd-note','Redraws these numbers only. Nothing new can arrive until sinka answers again.');
  setText('upd','These numbers stopped moving. Last answer from sinka: '+answeredAgo()+'.');
  setText('d-count','out of reach \u2014 not moving');
- setText('fix-what','sinka cannot be reached, so there is nothing this page can do until it answers again.');
- renderSteps(null,null,'sinka is out of reach, so this page cannot say yet. It keeps trying every '+REFRESH_SECS+' seconds.');
- renderAlerts(['<div class="alert err"><b>This page cannot reach sinka.</b> Everything below is the last thing that really arrived, and it is not changing until the server answers again. Details: <code>'+h(why)+'</code></div>']);
+ setText('fix-what',auth?'Nothing on this page can be checked until the private token is pasted in step 1 below.':'sinka cannot be reached, so there is nothing this page can do until it answers again.');
+ renderSteps(null,null,auth?'This page cannot show live numbers until the private token is pasted in step 1 below.':'sinka is out of reach, so this page cannot say yet. It keeps trying every '+REFRESH_SECS+' seconds.');
+ renderAlerts(['<div class="alert err"><b>'+(auth?'This page is not authorized yet.':'This page cannot reach sinka.')+'</b> Everything below is the last thing that really arrived, and it is not changing until the server answers again. Details: <code>'+h(why)+'</code></div>']);
  paintRail();
 }
+/* sinka answered, but this page threw while drawing it. That is a bug here, not
+   an outage there: say so, and do not freeze or blame the server. */
+function renderBug(e){
+ var why=str(e&&e.message)||str(e)||'unknown error';
+ var hero=el('hero');if(hero)hero.className='card hero warn';
+ var face=el('hero-face'),t=el('hero-t'),s=el('hero-s'),line='This page could not draw the numbers';
+ if(t&&t.textContent!==line){if(face)face.textContent='\u25d0';t.textContent=line;s.textContent='sinka answered, so the service is fine. This page hit its own bug while drawing the reply and shows nothing new; the numbers below are the last ones it managed to draw.';}
+ lastVerdict='bug';
+ setText('cd-note','Redraws these numbers only. The last redraw failed inside this page, not in sinka.');
+ renderAlerts(['<div class="alert warn"><b>This page hit its own bug.</b> sinka answered, so the service is fine, but the dashboard could not draw the reply. Nothing is frozen: the next redraw tries again. Details: <code>'+h(why)+'</code></div>']);
+}
+/* An answer this page must not treat as a status object: a refused or
+   unauthorized envelope, or an unreadable body. */
+function envelopeProblem(d){
+ if(!d||typeof d!=='object'||Array.isArray(d))return 'The server sent back an answer this page cannot read.';
+ if(d.success===false)return str(d.error)||str(d.message)||'The server refused to answer.';
+ if(typeof d._http==='number'&&d._http>=400)return str(d.error)||str(d.message)||('The server answered with status '+d._http+'.');
+ return '';}
 function refresh(){
- return api('/api/status').then(function(d){
+ var seq=++reqSeq;
+ return api('/api/status',{method:'GET'}).then(function(d){
+  if(seq!==reqSeq)return null;                 // a newer request owns the page now
+  var bad=envelopeProblem(d);
+  if(bad){netDown({message:bad},(d&&d._http===401)?'auth':null);return null;}
   var was=netDownAt;
   netDownAt=0;lastGood=d||{};lastGoodAt=Date.now();
   setFrozen(false);
-  render(lastGood);
+  try{render(lastGood);}
+  /* A renderer bug is reported as a bug: it must not claim the server is down. */
+  catch(err){renderBug(err);return null;}
   countdown=REFRESH_SECS;setText('cd',countdown);
   if(was)noteBack('Reconnected \u2014 these numbers are live again.');
   return lastGood;})
- .catch(function(e){netDown(e);return null;});}
+  .catch(function(e){
+   if(seq!==reqSeq)return null;                 // a stale failure never paints over fresh data
+   netDown(e);return null;});}
 var guideClose=el('guide-close');if(guideClose)guideClose.onclick=function(){setGuide(false);};
 var guideOpen=el('guide-open');if(guideOpen)guideOpen.onclick=function(){openGuide();};
 var heroGuide=el('hero-guide');if(heroGuide)heroGuide.onclick=function(e){e.preventDefault();openGuide();};
+/* Where a test copy would actually go, so the narrow-screen fix card can say it. */
+function testTarget(){
+ var n=el('inp-to'),v=n?String(n.value==null?'':n.value).trim():'';
+ if(v)return v;
+ var d=lastGood&&typeof lastGood==='object'?lastGood:null;
+ var list=arr(d&&d.destinations);
+ return list.length?String(list[0]):'';}
+function testTargetLine(){
+ var to=testTarget();
+ return to?('Test copy goes to '+to+'.'):'No test destination yet: fill one in above, or add a team inbox in the server settings.';}
 var btnRefresh=el('btn-refresh');
-if(btnRefresh)btnRefresh.onclick=function(){setBusy(true,btnRefresh,'Refreshing\u2026');refresh().then(function(){setBusy(false,btnRefresh);});};
+if(btnRefresh)btnRefresh.onclick=function(){setBusy(true,btnRefresh,'Refreshing\u2026');
+ var p;try{p=refresh();}catch(e){p=Promise.reject(e);}
+ /* Teardown in .finally: a rejected refresh must never leave the buttons stuck. */
+ p.finally(function(){setBusy(false,btnRefresh);});};
 var btnPoll=el('btn-poll');
-if(btnPoll)btnPoll.onclick=function(){runAction(btnPoll,'Checking\u2026','poll',function(){return api('/api/poll-now');},true);};
+if(btnPoll)btnPoll.onclick=function(){runAction(btnPoll,'Checking\u2026','poll',function(){return api('/api/poll-now',{method:'POST',body:{}});},true);};
 var btnPollFix=el('btn-poll-fix');
-if(btnPollFix)btnPollFix.onclick=function(){runAction(btnPollFix,'Checking\u2026','poll',function(){return api('/api/poll-now');},true);};
+if(btnPollFix)btnPollFix.onclick=function(){runAction(btnPollFix,'Checking\u2026','poll',function(){return api('/api/poll-now',{method:'POST',body:{}});},true);};
 var btnTest=el('btn-test');
-if(btnTest)btnTest.onclick=function(){var to=el('inp-to');runAction(btnTest,'Sending\u2026','test',function(){return api('/api/test-forward',{to:to?to.value:''});},false);};
+if(btnTest)btnTest.onclick=function(){var to=el('inp-to');runAction(btnTest,'Sending\u2026','test',function(){return api('/api/test-forward',{method:'POST',body:{to:to?to.value:''}});},false);};
 var btnTestFix=el('btn-test-fix');
-if(btnTestFix)btnTestFix.onclick=function(){var to=el('inp-to');runAction(btnTestFix,'Sending\u2026','test',function(){return api('/api/test-forward',{to:to?to.value:''});},false);};
+if(btnTestFix)btnTestFix.onclick=function(){var to=el('inp-to');runAction(btnTestFix,'Sending\u2026','test',function(){return api('/api/test-forward',{method:'POST',body:{to:to?to.value:''}});},false);};
 var btnBase=el('btn-base');
 if(btnBase)btnBase.onclick=function(){if(!confirm('Skip the backlog? This marks everything currently unread in the source inbox as read and copies none of it. It cannot be undone.'))return;
- runAction(btnBase,'Skipping\u2026','base',function(){return api('/api/baseline');},true);};
+ runAction(btnBase,'Skipping\u2026','base',function(){return api('/api/baseline',{method:'POST',body:{}});},true);};
 var inpToken=el('inp-token');if(inpToken)inpToken.oninput=function(e){token=e.target.value.trim();};
+var inpTo=el('inp-to');if(inpTo)inpTo.oninput=function(){setText('fix-to',testTargetLine());};
 function tick(){
  paintRail();
  if(document.hidden)return;              // paused while the tab is in the background
@@ -1090,7 +1321,7 @@ document.addEventListener('visibilitychange',function(){
  var u2=el('cd-u');if(u2)u2.hidden=false;
  setText('cd-note','Redraws these numbers only. sinka checks mail on its own timer.');
  countdown=REFRESH_SECS;setText('cd',countdown);
- refresh().then(function(){if(away>45000&&!netDownAt)noteBack('Welcome back \u2014 updated just now.');});});
+ refresh().then(function(){if(away>45000&&!netDownAt)noteBack('Welcome back \u2014 updated just now.');},function(){});});
 if(guideHidden())setGuide(false);
 setText('cd',countdown);
 refresh();setInterval(tick,1000);

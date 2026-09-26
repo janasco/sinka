@@ -31,6 +31,12 @@ npx wrangler secret put ADMIN_TOKEN
 
 `GITHUB_TOKEN_*` stays local only (deploy/ops), never as a Worker secret.
 
+The container only gets the keys listed in `envVars` in `worker.js`.
+A secret set but not listed there never reaches the poller — add it to
+that list in the same change (this applies today to
+`ALERT_NTFY_TOPIC`, `ALERT_THRESHOLD`, `APPEND_CONCURRENCY` and
+`CATCHUP_LIMIT`, which are not in the list yet).
+
 ## 3. Deploy
 
 Option A — Workers Builds (recommended, no Docker):
@@ -63,6 +69,11 @@ npx wrangler route add sinka.example.com/* sinka
   (Email OTP, e.g. `you@example.com` only).
 - Test incognito: OTP → dashboard → `/api/status`
   (`sinksConfigured: N`, `seenCount`, `pendingSinks`).
+  With `ADMIN_TOKEN` set, paste it into the "Things you can do" token
+  box before pressing **Check for mail now**, **Send a test copy** or
+  **Skip the backlog** — the box is kept in that browser tab only.
+- The "This page updates in 30s" countdown is only the page redraw; the
+  real check interval is `POLL_INTERVAL_MS`, shown as "Checks every".
 - `POST /api/test-forward {"to":"team-a@example.com"}`.
 
 ## 5. Retire the old path (only after edge is green)
