@@ -1,0 +1,14 @@
+# Chooser for new Sinka issues.
+#
+# Blank issues stay enabled: if neither template fits, opening an issue with
+# whatever wording is clearer is always fine.
+
+blank_issues_enabled: true
+
+# No contact_links on purpose. Sinka has no public chat, forum, support inbox
+# or documentation site to point at, and a placeholder link is worse than no
+# link. Add one here only when a real destination actually exists and somebody
+# is keeping it answered.
+#
+# Security reports are the one exception to "just open an issue": see
+# SECURITY.md at the repository root for the private reporting route.

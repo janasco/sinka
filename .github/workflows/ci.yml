@@ -1,0 +1,48 @@
+# CI for Sinka: syntax check + unit tests. No deploy, no secrets.
+#
+# The test suite boots the real server in a child process and fetches it over
+# loopback (test/served-page.test.js binds localhost on ports 18805-18807).
+# That is plain localhost traffic, which hosted runners allow as-is, so the
+# suite is not restricted or sandboxed. Nothing else reaches the network and no
+# credentials are supplied: the tests build their own throwaway environment and
+# deliberately run with no .env, no IMAP and no tokens.
+name: CI
+
+# No branch filters: every push and every pull request runs this workflow.
+on:
+  push:
+  pull_request:
+
+# Read-only. This workflow only checks the code out and runs npm scripts.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    # Generous ceiling for a slow runner; the suite normally finishes in seconds.
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # package.json requires node >=20; test both ends of that range.
+        node: [20, 22]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
