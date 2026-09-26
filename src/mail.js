@@ -458,15 +458,15 @@ export async function appendTestMessage(cfg, to) {
   if (!active.length) throw new Error('DEST_SINKS is empty (or all disabled)');
   const target = (to || '').trim() || active[0].user;
   const raw = [
-    `From: "sinka" <${cfg.gmailUser}>`,
+    `From: "Sinka" <${cfg.gmailUser}>`,
     `To: ${target}`,
-    'Subject: sinka test — replicator is working',
+    'Subject: Sinka test — copying is working',
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: <sinka-test-${Date.now()}@example.com>`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
     '',
-    'This is a test copy filed by the sinka replicator. No action needed.',
+    'This is a test copy filed by Sinka. No action needed.',
     '',
   ].join('\r\n');
   if (cfg.dryRun) return { dryRun: true, to: target };

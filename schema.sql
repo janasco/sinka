@@ -1,4 +1,4 @@
--- D1 schema for sinka (Option 1: Containers + D1).
+-- D1 schema for Sinka (Option 1: Containers + D1).
 -- Replaces data/seen.json (Message-IDs already replicated).
 CREATE TABLE IF NOT EXISTS seen (
   id TEXT PRIMARY KEY,

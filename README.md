@@ -1,4 +1,4 @@
-# sinka — one inbox in, many inboxes out
+# Sinka — one inbox in, many inboxes out
 
 Imagine one mailbox at the office receives all the letters. Sinka reads
 each new letter and drops an exact copy into every team member's own
@@ -6,7 +6,7 @@ mailbox. Nobody forwards anything, nobody shares passwords — everyone
 just finds the mail already in their inbox.
 
 > Sinka is an open-source **alternative to Gmailify** for teams.
-> Gmailify pulls many addresses into *one* Gmail account; sinka does
+> Gmailify pulls many addresses into *one* Gmail account; Sinka does
 > the opposite — it fans *one* Gmail inbox out to *many* real inboxes.
 
 How it copies: it never *sends* mail like a person would. It files a
@@ -24,7 +24,7 @@ and signatures (DKIM/SPF).
   Sinka speaks it, so Gmail just thinks it's another mail app.
 - **App Password** — a special 16-letter code Gmail makes for one app.
   It is NOT your normal Gmail password. One code per inbox.
-- **Poll** — sinka checking the source inbox for new mail. It does
+- **Poll** — Sinka checking the source inbox for new mail. It does
   this on its own timer (`POLL_INTERVAL_MS`, 5 minutes by default),
   like glancing at the mailbox. This is separate from the 30-second
   redraw of the dashboard page itself.
@@ -33,7 +33,7 @@ and signatures (DKIM/SPF).
 - **Worker / Container** — small pieces of your app running on the
   edge. Think: the worker is the front door, the container is the
   back room doing the copying.
-- **D1** — a tiny notebook on the edge where sinka writes down which
+- **D1** — a tiny notebook on the edge where Sinka writes down which
   letters it already copied, so it never copies twice.
 - **Subdomain** — your own web address for the dashboard, like
   `sinka.example.com`.
@@ -95,7 +95,7 @@ active inbox and confirm it arrives.
 
 ## Run it day and night (edge hosting)
 
-Instead of leaving your computer on forever, put sinka on
+Instead of leaving your computer on forever, put Sinka on
 Cloudflare's edge:
 
 1. Save each password as a secret (you type the value when asked,
@@ -144,14 +144,14 @@ One line, always one of these:
 - "N inboxes need your help" / "1 inbox needs your help" — a sign-in
   was refused.
 - "No team inboxes yet" — nothing is listed to copy into.
-- "One more step needed" — sinka itself is not signed in yet.
-- "The last check did not finish" — sinka is waiting and trying again
+- "One more step needed" — Sinka itself is not signed in yet.
+- "The last check did not finish" — Sinka is waiting and trying again
   on its own, a little longer each time.
 - "Starting up" / "Waiting for the first check" — nothing has run yet.
 
 Next to it, **"This page updates in 30s" is only this page redrawing
-itself.** It never triggers a mail check. sinka checks the mail on its
-own timer, shown right below as "sinka checks mail every", and again in
+itself.** It never triggers a mail check. Sinka checks the mail on its
+own timer, shown right below as "Sinka checks mail every", and again in
 the numbers as "Checks every". If you change `POLL_INTERVAL_MS`, that
 is the number that changes — not the 30.
 
@@ -161,7 +161,7 @@ sign-in was refused, the last check did not finish, being patient (it
 waits longer between tries, up to an hour), or no team inboxes listed.
 
 **If the page ever loses the server**, the answer becomes "Can't reach
-sinka — the numbers below may be out of date", the dot by the source
+Sinka — the numbers below may be out of date", the dot by the source
 inbox turns gray, and everything below is dimmed and frozen with a red
 note saying the numbers stopped moving and are the last ones that
 really arrived. The page keeps trying every 30 seconds, and says
@@ -174,7 +174,7 @@ One inbox on top, then one tile per team inbox underneath:
 
 - The top row is the source inbox, with a dot: green means the last
   check finished, red means it failed, gray means this page cannot
-  reach sinka. The label beside it says which.
+  reach Sinka. The label beside it says which.
 - Tiles are grouped, and the group titles are the color legend:
   - **Copying right now** — green.
   - **Sign-in failed, waiting for you** — red. Three failed copies in a
@@ -183,7 +183,7 @@ One inbox on top, then one tile per team inbox underneath:
   - **Paused by you** — gray. A `-` in front of the address in
     `DEST_SINKS` keeps the password but stops the copies.
   - **No sign-in details yet** — amber. The address is in
-    `FORWARD_LIST` but has no `DEST_SINKS` entry, so sinka has nothing
+    `FORWARD_LIST` but has no `DEST_SINKS` entry, so Sinka has nothing
     to sign in with. Needs you.
   - **Trying again** — purple. One tile per queued copy, showing how
     many tries it has had. Queued copies go out again on the next
@@ -236,22 +236,22 @@ Nothing here is listed unless the last check really did something.
 
 ### 6. Start here
 
-A three-item checklist that ticks itself as sinka really gets going:
+A three-item checklist that ticks itself as Sinka really gets going:
 
-1. sinka is signed in to the source inbox.
+1. Sinka is signed in to the source inbox.
 2. Team inboxes can sign in (it counts them, e.g. "8 of 10 inboxes can
    sign in").
 3. A copy has really landed.
 
-With no answer from sinka it says it cannot say yet, instead of
+With no answer from Sinka it says it cannot say yet, instead of
 guessing. "Read the longer guide" behind the checklist explains what
-sinka does, what the colors mean, and what each button does. Hide it
+Sinka does, what the colors mean, and what each button does. Hide it
 with "Got it, hide this"; reopen it any time with the **Guide** button
 in the footer.
 
 ### Also worth knowing
 
-- Outage alerts: when checks keep failing, sinka sends one phone
+- Outage alerts: when checks keep failing, Sinka sends one phone
   buzz via ntfy.sh. Set `ALERT_NTFY_TOPIC` and `ALERT_THRESHOLD`
   in `.env` (see `.env.example`); empty topic = no alerts. The same
   two keys can go on the edge as optional Worker secrets

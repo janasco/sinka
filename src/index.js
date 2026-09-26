@@ -216,7 +216,7 @@ async function poll(reason = 'timer') {
           fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
             method: 'POST',
             body: `${state.consecutiveErrors} consecutive poll errors: ${err?.message || String(err)}. Dashboard needs attention.`,
-            headers: { Title: 'sinka poll failing', Priority: 'high', Tags: 'warning' },
+            headers: { Title: 'Sinka — mail copying is failing', Priority: 'high', Tags: 'warning' },
             signal: AbortSignal.timeout(10000),
           }).catch((alertErr) => console.error('[alert] ntfy failed:', alertErr?.message || alertErr));
         }
@@ -278,8 +278,8 @@ app.get('/', (_req, res) => {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta name="description" content="sinka dashboard: does mail copying work, what is it doing right now, and what needs fixing.">
-<title>sinka &middot; is mail copying?</title>
+<meta name="description" content="Sinka dashboard: does mail copying work, what is it doing right now, and what needs fixing.">
+<title>Sinka &middot; is mail copying?</title>
 <style>
 :root{
   color-scheme:dark;
@@ -592,7 +592,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
 
 <header class="masthead">
   <div class="brand">
-    <h1><span class="mark" aria-hidden="true">&#9679;</span> sinka</h1>
+    <h1><span class="mark" aria-hidden="true">&#9679;</span> Sinka</h1>
     <p class="tagline">One inbox in, many team inboxes out.</p>
   </div>
   <p class="flowline">Reading <code>${escHtml(cfg.gmailUser)}</code> &rarr; filling <b>${cfg.forwardList.length}</b> team inbox${cfg.forwardList.length === 1 ? '' : 'es'}</p>
@@ -619,10 +619,10 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
     <div class="hero-side">
       <p class="k">This page updates in</p>
       <p class="v"><span id="cd">30</span><span class="u" id="cd-u">s</span></p>
-      <p class="s" id="cd-note">Redraws these numbers only. sinka checks mail on its own timer.</p>
+      <p class="s" id="cd-note">Redraws these numbers only. Sinka checks mail on its own timer.</p>
       <div class="rail">
         <p class="r"><span class="k">Last check finished</span> <b id="c-rail-last">&mdash;</b></p>
-        <p class="r"><span class="k">sinka checks mail every</span> <b id="c-rail-int">&mdash;</b></p>
+        <p class="r"><span class="k">Sinka checks mail every</span> <b id="c-rail-int">&mdash;</b></p>
         <p class="r"><span class="k">Numbers here are</span> <b id="c-rail-age">&mdash;</b></p>
       </div>
     </div>
@@ -661,7 +661,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <li><i class="sw sw-err" aria-hidden="true"></i>Red &mdash; sign-in was refused</li>
       <li><i class="sw sw-lav" aria-hidden="true"></i>Purple &mdash; queued, trying again on the next check</li>
       <li><i class="sw sw-off" aria-hidden="true"></i>Gray &mdash; paused on purpose</li>
-      <li><i class="sw sw-dot" aria-hidden="true"></i>Dot: green means the last check finished, red means it failed, gray means this page cannot reach sinka</li>
+      <li><i class="sw sw-dot" aria-hidden="true"></i>Dot: green means the last check finished, red means it failed, gray means this page cannot reach Sinka</li>
     </ul>
   </section>
 
@@ -675,7 +675,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <div class="metric"><div class="k">New mail found</div><div class="v" id="c-fetched">&mdash;</div><div class="s">waiting in the source inbox</div></div>
       <div class="metric" data-metric="repl"><div class="k">Copies filed</div><div class="v" id="c-repl">&mdash;</div><div class="s">landed in your team inboxes</div></div>
       <div class="metric"><div class="k">Skipped</div><div class="v" id="c-skip">&mdash;</div><div class="s">already filed, or automatic replies</div></div>
-      <div class="metric"><div class="k">Remembered</div><div class="v" id="c-seen">&mdash;</div><div class="s">messages sinka will never copy twice</div></div>
+      <div class="metric"><div class="k">Remembered</div><div class="v" id="c-seen">&mdash;</div><div class="s">messages Sinka will never copy twice</div></div>
       <div class="metric"><div class="k">Checks every</div><div class="v word" id="c-int">&mdash;</div><div class="s" id="c-up"></div></div>
     </div>
     <p class="ticker">Counts fill in as copies are really delivered &mdash; nothing on this page is estimated.</p>
@@ -746,18 +746,18 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <h2 id="guide-h">Start here</h2>
       <button type="button" class="ghost guide-close" id="guide-close">Got it, hide this</button>
     </div>
-    <p class="sec-sub">Three things in order. These tick themselves as sinka really gets going.</p>
+    <p class="sec-sub">Three things in order. These tick themselves as Sinka really gets going.</p>
     <ol class="cklist" id="steps">
-      <li class="ck off" id="step-1"><span class="ck-t" aria-hidden="true">&#9675;</span><div><b>sinka is signed in to the source inbox</b><span class="vh"> &mdash; not done yet. </span><span class="ck-s">This page has not heard from sinka yet, so it cannot say.</span></div></li>
-      <li class="ck off" id="step-2"><span class="ck-t" aria-hidden="true">&#9675;</span><div><b>Team inboxes can sign in</b><span class="vh"> &mdash; not done yet. </span><span class="ck-s">This page has not heard from sinka yet, so it cannot say.</span></div></li>
-      <li class="ck off" id="step-3"><span class="ck-t" aria-hidden="true">&#9675;</span><div><b>A copy has really landed</b><span class="vh"> &mdash; not done yet. </span><span class="ck-s">This page has not heard from sinka yet, so it cannot say.</span></div></li>
+      <li class="ck off" id="step-1"><span class="ck-t" aria-hidden="true">&#9675;</span><div><b>Sinka is signed in to the source inbox</b><span class="vh"> &mdash; not done yet. </span><span class="ck-s">This page has not heard from Sinka yet, so it cannot say.</span></div></li>
+      <li class="ck off" id="step-2"><span class="ck-t" aria-hidden="true">&#9675;</span><div><b>Team inboxes can sign in</b><span class="vh"> &mdash; not done yet. </span><span class="ck-s">This page has not heard from Sinka yet, so it cannot say.</span></div></li>
+      <li class="ck off" id="step-3"><span class="ck-t" aria-hidden="true">&#9675;</span><div><b>A copy has really landed</b><span class="vh"> &mdash; not done yet. </span><span class="ck-s">This page has not heard from Sinka yet, so it cannot say.</span></div></li>
     </ol>
     <details class="guide-more">
       <summary>Read the longer guide</summary>
       <div class="steps">
         <div class="step">
-          <h3><span class="step-n" aria-hidden="true">1</span>What sinka does</h3>
-          <p>sinka keeps many team inboxes in step. It reads new messages from one inbox you control and files a <b>copy</b> of each one into every team inbox you listed.</p>
+          <h3><span class="step-n" aria-hidden="true">1</span>What Sinka does</h3>
+          <p>Sinka keeps many team inboxes in step. It reads new messages from one inbox you control and files a <b>copy</b> of each one into every team inbox you listed.</p>
           <p>The original stays where it is, and nothing is sent anywhere else on your behalf. Each copy arrives as an ordinary message, so replies, history and rules all work as your team expects.</p>
         </div>
         <div class="step">
@@ -768,7 +768,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
             <span class="row"><i class="sw sw-err" aria-hidden="true"></i><span><b>Red</b> &mdash; sign-in was refused.</span></span>
             <span class="row"><i class="sw sw-lav" aria-hidden="true"></i><span><b>Purple</b> &mdash; queued, trying again on the next check.</span></span>
             <span class="row"><i class="sw sw-off" aria-hidden="true"></i><span><b>Gray</b> &mdash; paused on purpose.</span></span>
-            <span class="row"><i class="sw sw-dot" aria-hidden="true"></i><span><b>Dot</b> &mdash; green means the last check finished, red means it failed, gray means this page cannot reach sinka.</span></span>
+            <span class="row"><i class="sw sw-dot" aria-hidden="true"></i><span><b>Dot</b> &mdash; green means the last check finished, red means it failed, gray means this page cannot reach Sinka.</span></span>
           </div>
         </div>
         <div class="step">
@@ -781,7 +781,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
           </ul>
         </div>
       </div>
-      <p class="guide-foot">&ldquo;This page updates in&rdquo; is only the countdown on this page. sinka checks the mail itself on its own timer, shown as &ldquo;Checks every&rdquo; above. Reopen this guide any time with the <b>Guide</b> button in the footer.</p>
+      <p class="guide-foot">&ldquo;This page updates in&rdquo; is only the countdown on this page. Sinka checks the mail itself on its own timer, shown as &ldquo;Checks every&rdquo; above. Reopen this guide any time with the <b>Guide</b> button in the footer.</p>
     </details>
     <p class="guide-foot" id="guide-foot">Reopen this guide any time with the <b>Guide</b> button in the footer. Numbers here are never invented: a tile shows 0 until a copy really lands.</p>
   </section>
@@ -794,7 +794,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
     <details>
       <summary>Details for whoever runs this</summary>
       <div class="dev">
-        <p>sinka reads one inbox and files copies into each inbox listed in the server settings (<code>DEST_SINKS</code>, <code>FORWARD_LIST</code>). Entries prefixed with <code>-</code> are kept but paused. A shared <code>ADMIN_TOKEN</code> gates this page behind a private token that the browser holds in memory only.</p>
+        <p>Sinka reads one inbox and files copies into each inbox listed in the server settings (<code>DEST_SINKS</code>, <code>FORWARD_LIST</code>). Entries prefixed with <code>-</code> are kept but paused. A shared <code>ADMIN_TOKEN</code> gates this page behind a private token that the browser holds in memory only.</p>
         <p>Copying uses IMAP <code>APPEND</code> into each team inbox. There is no sending path. If this page is not behind Cloudflare Access (email one-time code), do not expose the port publicly.</p>
         <p>The countdown at the top is this page's own redraw timer, nothing more. The real interval between mail checks is <code>POLL_INTERVAL_MS</code>, shown as &ldquo;Checks every&rdquo;.</p>
         <p>Machine-readable status: <code>GET /api/status</code> &middot; <code>POST /api/poll-now</code> &middot; <code>POST /api/baseline</code> &middot; <code>POST /api/test-forward</code> &middot; <code>GET /healthz</code></p>
@@ -854,7 +854,7 @@ function api(path,opts){
  var timer=null;
  var p=new Promise(function(resolve,reject){
   if(ms>0)timer=setTimeout(function(){try{if(ctrl)ctrl.abort();}catch(e){}
-   reject(new Error('sinka did not answer within '+((ms<1000)?'a second':(Math.round(ms/1000)+' seconds'))+'.'));},ms);
+   reject(new Error('Sinka did not answer within '+((ms<1000)?'a second':(Math.round(ms/1000)+' seconds'))+'.'));},ms);
   fetch(path,{method:verb,headers:hd,body:payload?JSON.stringify(payload):undefined,signal:ctrl?ctrl.signal:undefined})
   .then(function(r){
    if(!r||typeof r.json!=='function')return{_http:(r&&r.status)||0,success:false,error:'The server sent back something unreadable.'};
@@ -891,7 +891,7 @@ function outcome(o,ctx){
  if(o.busy)return(msg||'A check was already running')+', so nothing was started a second time.';
  if(o.error){var lead=ctx==='test'?'The test copy was not filed. ':(ctx==='base'?'The backlog was not skipped. ':(ctx==='poll'?'The check did not finish. ':'That did not work. '));return lead+str(o.error)+(msg&&msg!==str(o.error)?' ('+msg+')':'');}
  if(o._http&&o._http>=400)return msg?(msg+'.'):('The server answered with status '+o._http+' instead of doing the job.');
- if(ctx==='test'&&o.dryRun)return'Practice mode, so nothing was really sent. sinka worked out that the test copy would go to '+(str(o.to)||'the first inbox')+'.';
+ if(ctx==='test'&&o.dryRun)return'Practice mode, so nothing was really sent. Sinka worked out that the test copy would go to '+(str(o.to)||'the first inbox')+'.';
  if(Array.isArray(o.results)){
   var ok=0,filed=0,fails=[];o.results.forEach(function(x){if(reallyFiled(x)){ok++;filed++;}else if(x&&x.skipped)filed++;else fails.push(x);});
   var n=o.results.length,head='Filed one test copy into '+n+' inbox'+(n===1?'':'es')+': '+ok+' accepted';
@@ -900,7 +900,7 @@ function outcome(o,ctx){
   if(!fails.length)return head+away+'.';
   return head+away+', '+fails.length+' failed: '+uniqReasons(fails).join('; ')+'.';}
  var base=num(o.baselined);
- if(base!=null)return'Marked '+base+' message'+(base===1?'':'s')+' as read and copied none of them. sinka carries on with whatever arrives next.';
+ if(base!=null)return'Marked '+base+' message'+(base===1?'':'s')+' as read and copied none of them. Sinka carries on with whatever arrives next.';
  var f=num(o.fetched);
  if(f!=null){
   if(!f)return'Looked in the source inbox just now. There was no new mail to copy.';
@@ -977,7 +977,7 @@ function renderDests(d){
   if(!pending.length)return '';
   var tiles=pending.map(function(p){var n=num(p.attempts)||0;return tileHtml(p.to,'retry',n,n===1?'try':'tries','Waiting for the next check',false);}).join('');
   return '<div class="grp retry"><span class="grp-k">Trying again</span><span class="grp-n">'+pending.length+'</span></div><div class="tiles">'+tiles+'</div>'
-   +'<p class="pipe-foot">'+pending.length+' cop'+(pending.length===1?'y':'ies')+' could not be filed yet, so sinka keeps them queued and retries on the next check.</p>';}
+   +'<p class="pipe-foot">'+pending.length+' cop'+(pending.length===1?'y':'ies')+' could not be filed yet, so Sinka keeps them queued and retries on the next check.</p>';}
  var liveRows=list.filter(function(a){return !!onS[a]&&!autoS[a];});
  var autoRows=list.filter(function(a){return !!autoS[a];});
  var offRows=list.filter(function(a){return !!offS[a];});
@@ -1062,10 +1062,10 @@ function renderHero(d,r,cov){
  if(!hero||!face||!t||!s)return;
  var cls='ok',symbol='\u25cf',line='Everything is working',sub='New mail is being copied into your team inboxes.';
  var bad=malformedFields(d);
- if(!stateKnown(d)){cls='warn';symbol='\u25cc';line='The server has not told this page anything yet';sub='sinka answered, but the reply carried no numbers. This page will not invent any; it keeps asking.';}
+ if(!stateKnown(d)){cls='warn';symbol='\u25cc';line='The server has not told this page anything yet';sub='Sinka answered, but the reply carried no numbers. This page will not invent any; it keeps asking.';}
  else if(bad.length){cls='warn';symbol='\u25d0';line='The server sent an answer this page cannot read in full';sub=malformedLine(bad)+' The numbers below are only the ones it could read.';}
- else if(d.setupNeeded){cls='err';symbol='\u2715';line='One more step needed';sub='sinka cannot copy anything until its own sign-in details are set. The details are below.';}
- else if(r.error){cls='err';symbol='\u2715';line='The last check did not finish';sub='sinka is waiting and trying again on its own, a little longer each time. The details are below.';}
+ else if(d.setupNeeded){cls='err';symbol='\u2715';line='One more step needed';sub='Sinka cannot copy anything until its own sign-in details are set. The details are below.';}
+ else if(r.error){cls='err';symbol='\u2715';line='The last check did not finish';sub='Sinka is waiting and trying again on its own, a little longer each time. The details are below.';}
  else if(cov.refused){cls='warn';symbol='\u25d0';line=needLine(cov.refused);sub='A sign-in was refused. Fix it, then choose Send a test copy.';}
  else if(cov.missingCount){cls='warn';symbol='\u25d0';line=needLine(cov.missingCount);sub=cov.missingCount+' of the '+cov.total+' listed inboxes'+(cov.missingCount===1?' has':'es have')+' no sign-in details yet, so nothing is copied there. Add the app password, then send a test copy.';}
  else if(!cov.total||!d.sinksConfigured){cls='warn';symbol='\u25d0';line='No team inboxes yet';sub='Add at least one team inbox in the server settings, then send a test copy to check it.';}
@@ -1087,9 +1087,9 @@ function ck(n,on,need,title,sub){
   +'<div><b>'+h(title)+'</b><span class="vh"> &mdash; '+(on?'done':'not done yet')+'. </span>'
   +'<span class="ck-s">'+h(sub)+'</span></div></li>';}
 /* The checklist only ever states what is really true, so a healthy install sees three ticks.
-   With no answer from sinka, or with an answer that carried no facts at all, it says so
+   With no answer from Sinka, or with an answer that carried no facts at all, it says so
    instead of guessing or staying blank. */
-var STEP_TITLES=['sinka is signed in to the source inbox','Team inboxes can sign in','A copy has really landed'];
+var STEP_TITLES=['Sinka is signed in to the source inbox','Team inboxes can sign in','A copy has really landed'];
 var NOT_TOLD='The server has not told this page anything yet, so this page cannot say.';
 /* "Answered but silent" is not "fine": without these fields there is nothing to assert. */
 function stateKnown(d){
@@ -1107,8 +1107,8 @@ function renderSteps(d,r,unknown){
  arr(r.details).forEach(function(m){arr(m&&m.results).forEach(function(x){if(reallyFiled(x))ev++;});});
  var rows=[];
  rows.push(ck(1,!d.setupNeeded,!!d.setupNeeded,
-  d.setupNeeded?'sinka is not signed in yet':'sinka is signed in to the source inbox',
-  d.setupNeeded?"Fill in sinka's own sign-in details in the server settings. Until then it cannot read the source inbox.":'sinka can read the source inbox, so it is ready to copy.'));
+  d.setupNeeded?'Sinka is not signed in yet':'Sinka is signed in to the source inbox',
+  d.setupNeeded?"Fill in Sinka's own sign-in details in the server settings. Until then it cannot read the source inbox.":'Sinka can read the source inbox, so it is ready to copy.'));
  var missN=cov.missingCount;
  rows.push(ck(2,dests>0&&missN<=0&&!refused,dests===0||missN>0||refused>0,
   dests?(cov.ready+' of '+dests+' inboxes can sign in'):'No team inboxes listed yet',
@@ -1127,12 +1127,12 @@ function renderFix(d,cov){
  var bad=malformedFields(d);
  if(bad.length)line=malformedLine(bad)+' Fix the server, then send a test copy.';
  else if(!stateKnown(d))line='The server has not told this page anything yet, so there is nothing to suggest until it answers with real numbers.';
- else if(d.setupNeeded)line="sinka's own sign-in details are missing. Fill them in on the server, then come back and send a test copy.";
+ else if(d.setupNeeded)line="Sinka's own sign-in details are missing. Fill them in on the server, then come back and send a test copy.";
  else if(cov.refused)line='A sign-in was refused for '+arr(d.autoDisabledSinks).join(', ')+'. Fix the password on the server, then send a test copy to switch copying back on.';
  else if(!cov.total||!d.sinksConfigured)line='No team inbox is ready. Add one in the server settings, then send a test copy to check it.';
  else if(cov.missingCount)line=cov.missingCount+' listed inbox'+(cov.missingCount===1?' has':'es have')+' no sign-in details yet, so nothing is copied there. Add the app password on the server, then send a test copy.';
  else if(cov.paused)line='Nothing to fix. '+cov.paused+' inbox'+(cov.paused===1?' is':'es are')+' paused on purpose.';
- else if(d.consecutiveErrors)line='Nothing to fix. sinka is waiting longer between tries after a failed check.';
+ else if(d.consecutiveErrors)line='Nothing to fix. Sinka is waiting longer between tries after a failed check.';
  else line='Nothing needs fixing right now. A test copy is the quickest way to prove copying works.';
  setText('fix-what',line);}
 /* A stable token for one distinct result. /api/status keeps returning the same
@@ -1198,13 +1198,13 @@ function render(d){
  var al=[];
  if(bad.length)al.push('<div class="alert warn"><b>This page cannot read the whole answer.</b> '+h(malformedLine(bad))+'</div>');
  if(!known)al.push('<div class="alert warn"><b>The server has not told this page anything yet.</b> It answered, but the reply carried no inbox list, no check times and no counts, so nothing on this page can be trusted yet. It keeps asking every '+REFRESH_SECS+' seconds.</div>');
- if(d.setupNeeded)al.push('<div class="alert err"><b>One more step needed.</b> sinka cannot copy any mail until its own sign-in details are set. Details: <code>'+h(d.setupNeeded)+'</code></div>');
+ if(d.setupNeeded)al.push('<div class="alert err"><b>One more step needed.</b> Sinka cannot copy any mail until its own sign-in details are set. Details: <code>'+h(d.setupNeeded)+'</code></div>');
  if(!bad.length&&(!cov.total||!d.sinksConfigured))al.push('<div class="alert warn"><b>Nothing is being copied yet.</b> No team inbox is ready. Add one in the server settings, then choose Send a test copy to check it.</div>');
  if(cov.paused)al.push('<div class="alert warn"><b>Paused on purpose.</b> '+arr(d.disabledSinks).map(h).join(', ')+' will not receive copies until you take the leading dash off the address in the server settings.</div>');
  if(cov.missingCount)al.push('<div class="alert warn"><b>'+h(needLine(cov.missingCount))+'.</b> '+cov.missing.map(h).join(', ')+' &mdash; no sign-in details yet, so nothing is copied there. Add the app password for each, then choose Send a test copy.</div>');
  if(cov.refused)al.push('<div class="alert err"><b>Sign-in was refused.</b> '+arr(d.autoDisabledSinks).map(h).join(', ')+' &mdash; the password was rejected or revoked. Fix it, then choose Send a test copy to switch copying back on.</div>');
  if(r.error)al.push('<div class="alert err"><b>The last check did not finish</b> ('+h(str(r.reason)||'automatic')+'): <code>'+h(r.error)+'</code></div>');
- if(num(d.consecutiveErrors))al.push('<div class="alert note"><b>Being patient.</b> '+num(d.consecutiveErrors)+' check'+(num(d.consecutiveErrors)===1?'':'s')+' in a row did not finish, so sinka is waiting longer between tries, up to an hour.</div>');
+ if(num(d.consecutiveErrors))al.push('<div class="alert note"><b>Being patient.</b> '+num(d.consecutiveErrors)+' check'+(num(d.consecutiveErrors)===1?'':'s')+' in a row did not finish, so Sinka is waiting longer between tries, up to an hour.</div>');
  if(!al.length&&!bad.length&&!cov.total)al.push('<div class="alert warn"><b>No team inboxes listed.</b> There is nowhere to put copies yet. Add at least one inbox in the server settings.</div>');
  renderAlerts(al);
  renderFix(d,cov);
@@ -1225,33 +1225,33 @@ function netDown(e,kind){
  if(hero)hero.className='card hero down';
  var t=el('hero-t'),s=el('hero-s'),face=el('hero-face');
  var line=auth?(token?'The private token was not accepted \u2014 no numbers to show':'Paste your private token to see live numbers')
-  :"Can't reach sinka \u2014 the numbers below may be out of date";
- var sub=auth?(token?'sinka answered, but it would not show its numbers to this tab. Paste the private token again in step 1 below, then refresh.'
-  :'sinka answered, but it will not show its numbers without the private token for this dashboard. Paste it in step 1 below: this page keeps it in this tab only, never on disk.')
-  :'This page cannot talk to sinka, so nothing below is moving: these are the numbers from the last time it answered. It keeps trying every '+REFRESH_SECS+' seconds.';
+  :"Can't reach Sinka \u2014 the numbers below may be out of date";
+ var sub=auth?(token?'Sinka answered, but it would not show its numbers to this tab. Paste the private token again in step 1 below, then refresh.'
+  :'Sinka answered, but it will not show its numbers without the private token for this dashboard. Paste it in step 1 below: this page keeps it in this tab only, never on disk.')
+  :'This page cannot talk to Sinka, so nothing below is moving: these are the numbers from the last time it answered. It keeps trying every '+REFRESH_SECS+' seconds.';
  if(t&&s&&t.textContent!==line){if(face)face.textContent='\u2715';t.textContent=line;s.textContent=sub;}
  lastVerdict='down';
  setFrozen(true);
  var dot=el('srcdot');if(dot){dot.classList.remove('idle');dot.classList.add('dead');}
- setText('pipe-state',auth?'waiting for the private token':(lastGoodAt?'out of reach, numbers frozen':'cannot reach sinka'));
- setText('cd-note','Redraws these numbers only. Nothing new can arrive until sinka answers again.');
- setText('upd','These numbers stopped moving. Last answer from sinka: '+answeredAgo()+'.');
+ setText('pipe-state',auth?'waiting for the private token':(lastGoodAt?'out of reach, numbers frozen':'cannot reach Sinka'));
+ setText('cd-note','Redraws these numbers only. Nothing new can arrive until Sinka answers again.');
+ setText('upd','These numbers stopped moving. Last answer from Sinka: '+answeredAgo()+'.');
  setText('d-count','out of reach \u2014 not moving');
- setText('fix-what',auth?'Nothing on this page can be checked until the private token is pasted in step 1 below.':'sinka cannot be reached, so there is nothing this page can do until it answers again.');
- renderSteps(null,null,auth?'This page cannot show live numbers until the private token is pasted in step 1 below.':'sinka is out of reach, so this page cannot say yet. It keeps trying every '+REFRESH_SECS+' seconds.');
- renderAlerts(['<div class="alert err"><b>'+(auth?'This page is not authorized yet.':'This page cannot reach sinka.')+'</b> Everything below is the last thing that really arrived, and it is not changing until the server answers again. Details: <code>'+h(why)+'</code></div>']);
+ setText('fix-what',auth?'Nothing on this page can be checked until the private token is pasted in step 1 below.':'Sinka cannot be reached, so there is nothing this page can do until it answers again.');
+ renderSteps(null,null,auth?'This page cannot show live numbers until the private token is pasted in step 1 below.':'Sinka is out of reach, so this page cannot say yet. It keeps trying every '+REFRESH_SECS+' seconds.');
+ renderAlerts(['<div class="alert err"><b>'+(auth?'This page is not authorized yet.':'This page cannot reach Sinka.')+'</b> Everything below is the last thing that really arrived, and it is not changing until the server answers again. Details: <code>'+h(why)+'</code></div>']);
  paintRail();
 }
-/* sinka answered, but this page threw while drawing it. That is a bug here, not
+/* Sinka answered, but this page threw while drawing it. That is a bug here, not
    an outage there: say so, and do not freeze or blame the server. */
 function renderBug(e){
  var why=str(e&&e.message)||str(e)||'unknown error';
  var hero=el('hero');if(hero)hero.className='card hero warn';
  var face=el('hero-face'),t=el('hero-t'),s=el('hero-s'),line='This page could not draw the numbers';
- if(t&&t.textContent!==line){if(face)face.textContent='\u25d0';t.textContent=line;s.textContent='sinka answered, so the service is fine. This page hit its own bug while drawing the reply and shows nothing new; the numbers below are the last ones it managed to draw.';}
+ if(t&&t.textContent!==line){if(face)face.textContent='\u25d0';t.textContent=line;s.textContent='Sinka answered, so the service is fine. This page hit its own bug while drawing the reply and shows nothing new; the numbers below are the last ones it managed to draw.';}
  lastVerdict='bug';
- setText('cd-note','Redraws these numbers only. The last redraw failed inside this page, not in sinka.');
- renderAlerts(['<div class="alert warn"><b>This page hit its own bug.</b> sinka answered, so the service is fine, but the dashboard could not draw the reply. Nothing is frozen: the next redraw tries again. Details: <code>'+h(why)+'</code></div>']);
+ setText('cd-note','Redraws these numbers only. The last redraw failed inside this page, not in Sinka.');
+ renderAlerts(['<div class="alert warn"><b>This page hit its own bug.</b> Sinka answered, so the service is fine, but the dashboard could not draw the reply. Nothing is frozen: the next redraw tries again. Details: <code>'+h(why)+'</code></div>']);
 }
 /* An answer this page must not treat as a status object: a refused or
    unauthorized envelope, or an unreadable body. */
@@ -1319,7 +1319,7 @@ document.addEventListener('visibilitychange',function(){
  if(document.hidden){hiddenSince=Date.now();setText('cd','paused');var u=el('cd-u');if(u)u.hidden=true;return;}
  var away=hiddenSince?Date.now()-hiddenSince:0;hiddenSince=0;
  var u2=el('cd-u');if(u2)u2.hidden=false;
- setText('cd-note','Redraws these numbers only. sinka checks mail on its own timer.');
+ setText('cd-note','Redraws these numbers only. Sinka checks mail on its own timer.');
  countdown=REFRESH_SECS;setText('cd',countdown);
  refresh().then(function(){if(away>45000&&!netDownAt)noteBack('Welcome back \u2014 updated just now.');},function(){});});
 if(guideHidden())setGuide(false);
@@ -1390,7 +1390,7 @@ if (runOnce) {
   process.exit(state.lastResult?.error ? 1 : 0);
 } else {
   app.listen(cfg.port, () => {
-    console.log(`sinka listening on :${cfg.port} (hostname sinka.example.com -> localhost:${cfg.port})`);
+    console.log(`Sinka listening on :${cfg.port} (hostname sinka.example.com -> localhost:${cfg.port})`);
   });
   // Initial poll shortly after boot, then on interval. Overlaps are skipped
   // by awaiting; a slow poll simply delays the next tick.

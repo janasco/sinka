@@ -1,5 +1,5 @@
 [Unit]
-Description=sinka Gmail replicator UI
+Description=Sinka Gmail replicator UI
 After=network-online.target
 Wants=network-online.target
 

@@ -1,6 +1,14 @@
-# Contributing to sinka
+# Contributing to Sinka
 
 Thanks for stopping by — issues and pull requests are welcome.
+
+## Naming
+
+The product is written **Sinka** in all prose and all UI text — page copy,
+alerts, docs, commit messages. Lowercase `sinka` is reserved for machine
+identifiers: the repo (`janasco/sinka`), the worker, the npm package, the
+host, the D1 database (`sinka-seen`), and file paths. Do not capitalise
+those, and do not leave a lowercase `sinka` in a sentence.
 
 ## Quick run
 
@@ -40,7 +48,7 @@ real addresses, IDs, or hostnames.
 Dashboard (keep the page's own wording):
 - The verdict line at the top still reads correctly for each state
   (working / N inboxes need help / no team inboxes / setup needed /
-  last check failed / starting up) and still says "Can't reach sinka"
+  last check failed / starting up) and still says "Can't reach Sinka"
   when `/api/status` cannot be reached, with the numbers below frozen
   rather than left looking live.
 - Section names: "What it is doing right now", "What the last check
