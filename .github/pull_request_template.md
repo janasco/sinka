@@ -25,7 +25,7 @@ Keep it short and honest. Contributors should know exactly what to tick.
 - **Commits must be human-authored, with no AI co-author trailers.** Do not add
   `Co-Authored-By` trailers for bots, `Generated-by` markers or robot emoji.
   Tooling may help you write the code locally, but the history and this PR read
-  as your own work. See `AGENTS.md` and `CONTRIBUTING.md`.
+  as your own work. See `CONTRIBUTING.md`.
 - **Never commit `.env` or `data/seen.json`** (or any `*.log`). Double-check the
   diff before you push.
 - One thing per PR, and keep it small.
