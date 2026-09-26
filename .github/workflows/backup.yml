@@ -1,0 +1,105 @@
+# Weekly backup of the sinka D1 dedupe table.
+#
+# The `seen` table (see schema.sql) is the only state Sinka has that cannot be
+# rebuilt from the mailbox: it records which Message-IDs have already been
+# replicated. Losing it means re-filing mail that was already copied.
+#
+# This workflow dumps it to a JSON artifact via scripts/export-d1-backup.mjs.
+# It is deliberately optional — a run with no settings configured SKIPS with a
+# notice instead of failing, so an unconfigured backup never turns the repo
+# red. Until a maintainer adds the three settings (see DEPLOY_EDGE.md section 7)
+# this file is inert.
+#
+# Nothing is deployed, pushed or deleted here: read-only contents, one SELECT
+# loop, one artifact upload.
+name: D1 backup
+
+on:
+  # Mondays 04:23 UTC. Off the hour on purpose: :00 is the most contended
+  # minute on GitHub's scheduler, and a late run is fine for a weekly dump.
+  schedule:
+    - cron: '23 4 * * 1'
+  # Manual run, e.g. right after adding the settings or before a risky change.
+  workflow_dispatch:
+
+# Read-only. This workflow only checks out code, runs a SELECT and uploads the
+# resulting file as a run artifact.
+permissions:
+  contents: read
+
+# One dump at a time: a manual run waits for a scheduled one instead of racing
+# it mid-query.
+concurrency:
+  group: d1-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Export seen table to an artifact
+    runs-on: ubuntu-latest
+    # D1 is queried page by page; this is generous, not a signal to wait.
+    timeout-minutes: 15
+
+    # The script is dependency-free (global fetch only), so no npm install.
+    # vars.* are safe in a job-level `if:`, secrets.* are not — GitHub refuses
+    # to resolve secrets before the job starts — so the token is checked by the
+    # guard step below instead. The job therefore always runs, which is what
+    # lets the guard print exactly which setting is missing.
+    #
+    # Only non-secret ids sit in job-level env. The token is attached to the
+    # two steps that actually need it (see below), so it is never handed to
+    # checkout, setup-node or upload-artifact.
+    env:
+      # Not secret: both ids are plain configuration, and the export script
+      # keeps them out of its own output anyway.
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      D1_DATABASE_ID: ${{ vars.D1_DATABASE_ID }}
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check backup configuration
+        id: gate
+        # Secret, and the only credential this workflow needs. Mint it with
+        # D1-read scope only, separate from the token the Worker runs on.
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.D1_EXPORT_TOKEN }}
+        run: |
+          missing=''
+          [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ] || missing="${missing} CLOUDFLARE_ACCOUNT_ID (repo variable)"
+          [ -n "${D1_DATABASE_ID:-}" ]          || missing="${missing} D1_DATABASE_ID (repo variable)"
+          [ -n "${CLOUDFLARE_API_TOKEN:-}" ]   || missing="${missing} D1_EXPORT_TOKEN (repo secret)"
+          if [ -n "$missing" ]; then
+            echo "::notice title=D1 backup skipped::Not configured yet, so nothing was exported. Add to GitHub Settings -> Secrets and variables -> Actions:${missing} See DEPLOY_EDGE.md section 7."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Export seen table
+        if: steps.gate.outputs.configured == 'true'
+        # A non-zero exit here fails the run on purpose: a configured backup
+        # that cannot reach D1 should be visible, not silently skipped.
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.D1_EXPORT_TOKEN }}
+        run: |
+          mkdir -p backups
+          node scripts/export-d1-backup.mjs \
+            --out "backups/sinka-seen-$(date -u +%Y%m%dT%H%M%SZ).json"
+
+      - name: Publish backup artifact
+        if: steps.gate.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sinka-seen-${{ github.run_number }}
+          path: backups/sinka-seen-*.json
+          if-no-files-found: error
+          # Artifacts expire; 90 days keeps a full quarter of weekly dumps.
+          # Download anything you want to keep for longer (see DEPLOY_EDGE.md).
+          retention-days: 90

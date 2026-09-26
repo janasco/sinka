@@ -8,9 +8,12 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "poll-once": "node src/index.js --once",
-    "check": "node --check src/index.js && node --check src/mail.js && node --check src/store.js && node --check src/store_d1.js && node --check worker.js",
+    "check": "node --check src/index.js && node --check src/mail.js && node --check src/store.js && node --check src/store_d1.js && node --check worker.js && node --check scripts/redeploy.mjs",
     "test": "node --test test/*.test.js",
-    "d1:schema": "wrangler d1 execute sinka-seen --remote --file=./schema.sql"
+    "d1:schema": "wrangler d1 execute sinka-seen --remote --file=./schema.sql",
+    "deploy": "wrangler deploy",
+    "redeploy": "node scripts/redeploy.mjs",
+    "redeploy:dry-run": "node scripts/redeploy.mjs --dry-run"
   },
   "engines": {
     "node": ">=20"
