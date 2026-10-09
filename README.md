@@ -177,6 +177,20 @@ it cannot say yet instead of guessing.
 The "this page updates in 30s" countdown is only the page redrawing itself; the real
 check interval is `POLL_INTERVAL_MS`, shown as "Checks every".
 
+## Status page: is the platform down?
+
+`GET /status` is a public, counts-only page for exactly that question — no sign-in,
+no inbox addresses. It shows one verdict (`Operational`, `Degraded`, `Down`,
+`Starting up`, `Needs setup`, or it plainly says it cannot reach Sinka), the key
+numbers, and the recent checks newest-first, so an outage can be traced back.
+
+- `GET /api/history` is the machine-readable form: the last result (counts only),
+  an uptime summary, and the check history newest-first. No token needed, so uptime
+  checkers can poll it.
+- The last 200 checks are kept in memory and persisted to `data/history.json`, so
+  the trail survives a restart. `GET /api/status` (private) carries the same trail
+  alongside the full detail.
+
 ## Safety notes
 
 - **Never run two pollers against one source inbox.** Two copies, twice over. Stop your local copy before starting the edge copy.

@@ -49,6 +49,82 @@ const state = {
   consecutiveErrors: 0,
 };
 
+// ---- Poll history for the public /status page ("trace back") ----
+// In-memory ring buffer, persisted best-effort to data/history.json so a
+// restart does not wipe the outage trail. Entries carry counts only —
+// never addresses, subjects or message IDs — so /api/history can stay public.
+const HISTORY_LIMIT = 200;
+const HISTORY_FILE = path.join(cfg.dataDir, 'history.json');
+let history = [];
+try {
+  fs.mkdirSync(cfg.dataDir, { recursive: true });
+  if (fs.existsSync(HISTORY_FILE)) {
+    const raw = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    if (Array.isArray(raw)) {
+      history = raw
+        .filter((e) => e && typeof e === 'object' && typeof e.at === 'string')
+        .map((e) => ({
+          at: e.at,
+          reason: String(e.reason || 'timer'),
+          ok: e.ok !== false,
+          ms: Number.isFinite(Number(e.ms)) ? Number(e.ms) : undefined,
+          fetched: Number.isFinite(Number(e.fetched)) ? Number(e.fetched) : undefined,
+          replicated: Number.isFinite(Number(e.replicated)) ? Number(e.replicated) : undefined,
+          retried: Number.isFinite(Number(e.retried)) ? Number(e.retried) : undefined,
+          skipped: Number.isFinite(Number(e.skipped)) ? Number(e.skipped) : undefined,
+          pending: Number.isFinite(Number(e.pending)) ? Number(e.pending) : undefined,
+          baselined: Number.isFinite(Number(e.baselined)) ? Number(e.baselined) : undefined,
+          consecutiveErrors: Number.isFinite(Number(e.consecutiveErrors)) ? Number(e.consecutiveErrors) : 0,
+          ...(e.error ? { error: String(e.error).slice(0, 300) } : {}),
+        }))
+        .slice(-HISTORY_LIMIT);
+    }
+  }
+} catch { /* non-fatal: history starts empty */ }
+
+function saveHistory() {
+  try {
+    fs.mkdirSync(cfg.dataDir, { recursive: true });
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(history.slice(-HISTORY_LIMIT)));
+  } catch (err) {
+    console.error('[history] save failed:', err?.message || err);
+  }
+}
+
+function recordHistory(entry) {
+  history.push({
+    at: new Date().toISOString(),
+    reason: String(entry?.reason || 'timer'),
+    ok: entry?.ok !== false,
+    ...(Number.isFinite(Number(entry?.ms)) ? { ms: Number(entry.ms) } : {}),
+    ...(Number.isFinite(Number(entry?.fetched)) ? { fetched: Number(entry.fetched) } : {}),
+    ...(Number.isFinite(Number(entry?.replicated)) ? { replicated: Number(entry.replicated) } : {}),
+    ...(Number.isFinite(Number(entry?.retried)) ? { retried: Number(entry.retried) } : {}),
+    ...(Number.isFinite(Number(entry?.skipped)) ? { skipped: Number(entry.skipped) } : {}),
+    ...(Number.isFinite(Number(entry?.pending)) ? { pending: Number(entry.pending) } : {}),
+    ...(Number.isFinite(Number(entry?.baselined)) ? { baselined: Number(entry.baselined) } : {}),
+    consecutiveErrors: state.consecutiveErrors,
+    ...(entry?.error ? { error: String(entry.error).slice(0, 300) } : {}),
+  });
+  if (history.length > HISTORY_LIMIT) history = history.slice(-HISTORY_LIMIT);
+  saveHistory();
+}
+
+function historySummary() {
+  const total = history.length;
+  const ok = history.filter((e) => e.ok).length;
+  const last50 = history.slice(-50);
+  const ok50 = last50.filter((e) => e.ok).length;
+  return {
+    total,
+    ok,
+    pct: total ? Math.round((ok / total) * 1000) / 10 : null,
+    last50: last50.length,
+    last50Ok: ok50,
+    last50Pct: last50.length ? Math.round((ok50 / last50.length) * 1000) / 10 : null,
+  };
+}
+
 let polling = false; // single-flight: never overlap polls on one Gmail account
 let nextAllowedAt = 0; // error backoff: Gmail throttle protection
 let alerted = false; // outage alert: true once ntfy fired for current error streak
@@ -75,6 +151,7 @@ async function poll(reason = 'timer') {
       state.lastPollAt = new Date().toISOString();
       state.lastResult = { reason, error: setupNeeded };
       console.error('[poll] skipped:', setupNeeded);
+      recordHistory({ reason, ok: false, error: setupNeeded });
       return state.lastResult;
     }
     const started = Date.now();
@@ -102,6 +179,7 @@ async function poll(reason = 'timer') {
       console.log(`[poll] BASELINED ${pendingUids.length} existing messages (no forwarding). New mail from here on will be replicated.`);
       state.consecutiveErrors = 0;
       alerted = false;
+      recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: pendingUids.length, replicated: 0, skipped: 0, baselined: pendingUids.length });
       return state.lastResult;
     }
     const messages = await withTimeout(fetchNewMessages(cfg), IMAP_BUDGET_MS, 'fetchNewMessages');
@@ -196,6 +274,7 @@ async function poll(reason = 'timer') {
     state.consecutiveErrors = 0;
     alerted = false;
     console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} (${state.lastResult.ms}ms)`);
+    recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: messages.length, replicated, retried, skipped, pending: getPending().length });
     return state.lastResult;
     } catch (err) {
       state.consecutiveErrors++;
@@ -223,6 +302,7 @@ async function poll(reason = 'timer') {
       } catch (alertErr) {
         console.error('[alert] ntfy failed:', alertErr?.message || alertErr);
       }
+      recordHistory({ reason, ok: false, error: err?.message || String(err) });
       return state.lastResult;
     }
   } finally {
@@ -798,6 +878,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
         <p>Copying uses IMAP <code>APPEND</code> into each team inbox. There is no sending path. If this page is not behind Cloudflare Access (email one-time code), do not expose the port publicly.</p>
         <p>The countdown at the top is this page's own redraw timer, nothing more. The real interval between mail checks is <code>POLL_INTERVAL_MS</code>, shown as &ldquo;Checks every&rdquo;.</p>
         <p>Machine-readable status: <code>GET /api/status</code> &middot; <code>POST /api/poll-now</code> &middot; <code>POST /api/baseline</code> &middot; <code>POST /api/test-forward</code> &middot; <code>GET /healthz</code></p>
+        <p>Public status page, no sign-in and no inbox addresses: <code>GET /status</code> &middot; <code>GET /api/history</code>. It keeps the last 200 checks, so an outage can be traced back.</p>
       </div>
     </details>
   </div>
@@ -1344,8 +1425,191 @@ app.get('/api/status', requireAdmin, (_req, res) => {
     pollIntervalMs: cfg.pollIntervalMs,
     dryRun: cfg.dryRun,
     seenCount: store.size(),
+    uptime: historySummary(),
+    history: [...history].reverse().slice(0, 100),
     ...state,
   });
+});
+
+// Public, counts-only history for the /status page. No addresses, no
+// subjects, no message IDs — safe to poll without a token, so uptime
+// checkers and teammates can see whether the platform is down.
+app.get('/api/history', (_req, res) => {
+  const last = (state.lastResult && typeof state.lastResult === 'object') ? state.lastResult : {};
+  res.json({
+    success: true,
+    startedAt: state.startedAt,
+    lastPollAt: state.lastPollAt,
+    consecutiveErrors: state.consecutiveErrors,
+    pollIntervalMs: cfg.pollIntervalMs,
+    setupNeeded: setupNeeded || null,
+    dryRun: cfg.dryRun,
+    seenCount: store.size(),
+    lastResult: {
+      reason: last.reason || null,
+      ms: Number.isFinite(Number(last.ms)) ? Number(last.ms) : null,
+      fetched: Number.isFinite(Number(last.fetched)) ? Number(last.fetched) : null,
+      replicated: Number.isFinite(Number(last.replicated)) ? Number(last.replicated) : null,
+      retried: Number.isFinite(Number(last.retried)) ? Number(last.retried) : null,
+      skipped: Number.isFinite(Number(last.skipped)) ? Number(last.skipped) : null,
+      pending: Number.isFinite(Number(last.pending)) ? Number(last.pending) : (Array.isArray(getPending()) ? getPending().length : null),
+      baselined: Number.isFinite(Number(last.baselined)) ? Number(last.baselined) : null,
+      ...(last.error ? { error: String(last.error).slice(0, 300) } : {}),
+    },
+    uptime: historySummary(),
+    history: [...history].reverse().slice(0, 100),
+  });
+});
+
+// Public status page: is the platform down, and what happened before?
+// Counts only, no inbox addresses, auto-refreshes from /api/history.
+app.get('/status', (_req, res) => {
+  res.send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="description" content="Sinka status: whether mail copying is running, and the recent check history.">
+<title>Sinka status</title>
+<style>
+:root{color-scheme:dark;--bg:#05070B;--card:#0E121A;--card-2:#121826;--line:#1A2333;--line-2:#273349;--ink:#F1F5F9;--silver:#E2E8F0;--mut:#8A99AE;--ok:#34D399;--warn:#FBBF24;--err:#F87171;--acc:#38BDF8;--pad:1.25rem;--r:14px;--rs:10px;--fs-xs:.8125rem;--fs-s:.875rem;--fs-m:.9375rem;--fs-l:1.125rem;--fs-xl:1.5rem;--sans:"Geist Sans",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#F5F7FA;--card:#FFFFFF;--card-2:#EFF3F9;--line:#E1E7EF;--line-2:#C8D2E0;--ink:#0F172A;--silver:#1E293B;--mut:#5A6B80;--ok:#15803D;--warn:#A16207;--err:#B91C1C;--acc:#0369A1}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 var(--fs-m)/1.55 var(--sans);padding:0 1.25rem 3rem}
+code{font-family:var(--mono);font-size:1em;background:var(--card-2);border:1px solid var(--line);border-radius:5px;padding:.05rem .32rem}
+.wrap{max-width:860px;margin:0 auto}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+a{color:var(--acc)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
+.masthead{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem 1rem;padding:1.75rem 0 1.1rem;border-bottom:1px solid var(--line)}
+.masthead h1{font-size:var(--fs-l);font-weight:600;margin:0}
+.tagline{color:var(--silver);margin:0}
+.stack{display:flex;flex-direction:column;gap:1.1rem;padding-top:1.1rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:var(--pad)}
+.hero{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.hero-face{width:2.75rem;height:2.75rem;flex:0 0 auto;display:grid;place-items:center;border-radius:12px;font-size:1.05rem;background:var(--card-2);border:1px solid var(--line-2);color:var(--mut)}
+.hero-t{font-size:var(--fs-xl);font-weight:600;margin:0}
+.hero-s{color:var(--mut);font-size:var(--fs-s);margin:.25rem 0 0}
+.hero.ok{border-color:var(--ok)}.hero.ok .hero-face,.hero.ok .hero-t{color:var(--ok)}
+.hero.warn{border-color:var(--warn)}.hero.warn .hero-face,.hero.warn .hero-t{color:var(--warn)}
+.hero.err{border-color:var(--err)}.hero.err .hero-face,.hero.err .hero-t{color:var(--err)}
+.hero.down{border-color:var(--err);border-style:dashed}.hero.down .hero-face,.hero.down .hero-t{color:var(--err)}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.6rem;margin-top:1rem}
+.metric{background:var(--card-2);border:1px solid var(--line);border-radius:var(--rs);padding:.7rem .8rem}
+.metric .k{font-size:var(--fs-xs);color:var(--mut)}
+.metric .v{font-size:var(--fs-l);font-weight:600;margin-top:.2rem}
+.metric .s{font-size:var(--fs-xs);color:var(--mut);margin-top:.15rem}
+table{width:100%;border-collapse:collapse;font-size:var(--fs-s)}
+th,td{text-align:left;padding:.45rem .5rem;border-top:1px solid var(--line);vertical-align:top}
+th{border-top:0;color:var(--mut);font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.06em}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{display:inline-block;font-size:var(--fs-xs);font-weight:600;border:1px solid var(--line-2);border-radius:999px;padding:.05rem .55rem}
+.pill.ok{color:var(--ok);border-color:var(--ok)}
+.pill.bad{color:var(--err);border-color:var(--err)}
+.empty{border:1px dashed var(--line-2);border-radius:var(--rs);padding:1.2rem 1rem;text-align:center;color:var(--mut);font-size:var(--fs-s)}
+.fine{font-size:var(--fs-xs);color:var(--mut)}
+footer{margin-top:1.4rem;padding-top:1.1rem;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;justify-content:space-between}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+</style>
+</head>
+<body>
+<a class="vh" href="#main">Skip to the main content</a>
+<div class="wrap">
+<header class="masthead"><h1>Sinka status</h1><p class="tagline">Is mail copying running? Newest check first.</p></header>
+<main id="main" class="stack">
+<section class="card hero" id="hero" aria-labelledby="hero-h">
+<h2 class="vh" id="hero-h">Current status</h2>
+<span class="hero-face" id="st-face" aria-hidden="true">\u25cf</span>
+<div><div role="status" aria-live="polite"><p class="hero-t" id="st-t">Starting up\u2026</p><p class="hero-s" id="st-s">Asking the server for the first numbers.</p></div></div>
+</section>
+<section class="card" aria-labelledby="m-h">
+<h2 class="vh" id="m-h">Key numbers</h2>
+<div class="mgrid">
+<div class="metric"><div class="k">Last check finished</div><div class="v" id="s-last">\u2014</div><div class="s" id="s-last-s"></div></div>
+<div class="metric"><div class="k">Checks every</div><div class="v" id="s-int">\u2014</div><div class="s">mail check timer</div></div>
+<div class="metric"><div class="k">Failed in a row</div><div class="v" id="s-err">\u2014</div><div class="s">resets on the next finished check</div></div>
+<div class="metric"><div class="k">Uptime, last 50 checks</div><div class="v" id="s-up">\u2014</div><div class="s" id="s-up-s"></div></div>
+</div>
+<p class="fine" id="upd" style="margin-top:.8rem"></p>
+</section>
+<section class="card" aria-labelledby="h-h">
+<h2 id="h-h" style="font-size:var(--fs-m);margin:0 0 .8rem">Recent checks</h2>
+<div id="hist"><p class="empty">Waiting for the first answer from the server.</p></div>
+</section>
+</main>
+<footer>
+<p class="fine">Counts only, no inbox addresses. Full detail is on the private dashboard at <code>/</code>. Machine-readable: <code>GET /api/history</code> and <code>GET /healthz</code>.</p>
+<p class="fine"><a href="/">Back to the dashboard</a></p>
+</footer>
+</div>
+<script>
+var REFRESH_SECS=30;
+var countdown=REFRESH_SECS;
+var DASH='—';
+function h(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function el(id){return document.getElementById(id);}
+function setText(id,v){var n=el(id);if(!n)return;v=String(v==null?'':v);if(n.textContent!==v)n.textContent=v;}
+function num(v){var n=Number(v);return(v==null||v===''||!isFinite(n))?null:n;}
+function rel(iso){if(typeof iso!=='string'||!iso)return DASH;var t=new Date(iso).getTime();if(!isFinite(t))return DASH;var d=Date.now()-t;if(d<45e3)return'just now';if(d<3600e3)return Math.round(d/60e3)+' min ago';if(d<86400e3)return Math.round(d/3600e3)+' h ago';return new Date(iso).toLocaleString();}
+function humanMs(ms){var n=num(ms);if(n==null||n<=0)return DASH;var s=Math.round(n/1000);if(s<60)return s+'s';return(n/60000).toFixed(n<600000?1:0)+'m';}
+function escErr(s){return h(String(s||'').slice(0,120));}
+function verdict(d){
+ var hero=el('hero'),face=el('st-face');
+ var cls='ok',sym='\u25CF',t='Operational',s='Mail checks are finishing.';
+ if(!d||typeof d!=='object'){cls='err';sym='\u2715';t='Cannot reach Sinka';s='This page cannot talk to Sinka. It keeps trying.';}
+ else if(d.setupNeeded){cls='err';sym='\u2715';t='Needs setup';s='Sinka cannot copy until its sign-in details are set.';}
+ else if(!d.lastPollAt){cls='warn';sym='\u25CC';t='Starting up';s='No check has finished yet.';}
+ else if(num(d.consecutiveErrors)>=3){cls='err';sym='\u2715';t='Down';s=num(d.consecutiveErrors)+' checks in a row did not finish. Sinka keeps trying, waiting longer each time.';}
+ else if(num(d.consecutiveErrors)>=1){cls='warn';sym='\u25D0';t='Degraded';s='The last check did not finish. Sinka is retrying on its own.';}
+ if(hero)hero.className='card hero '+cls;
+ if(face)face.textContent=sym;
+ setText('st-t',t);setText('st-s',s);
+}
+function render(d){
+ verdict(d);
+ if(!d||typeof d!=='object')return;
+ setText('s-last',d.lastPollAt?rel(d.lastPollAt):DASH);
+ var lr=(d.lastResult&&typeof d.lastResult==='object')?d.lastResult:{};
+ var bits=[];
+ if(lr.reason)bits.push(String(lr.reason));
+ if(num(lr.fetched)!=null)bits.push('found '+lr.fetched);
+ if(num(lr.replicated)!=null)bits.push('filed '+lr.replicated);
+ if(lr.error)bits.push('did not finish');
+ setText('s-last-s',bits.join(' · '));
+ setText('s-int',humanMs(d.pollIntervalMs));
+ setText('s-err',d.consecutiveErrors!=null?String(d.consecutiveErrors):DASH);
+ var up=d.uptime||{};
+ if(up.last50Pct!=null)setText('s-up',up.last50Pct+'%');
+ else if(up.pct!=null)setText('s-up',up.pct+'%');
+ else setText('s-up',DASH);
+ setText('s-up-s',up.last50?('over the last '+up.last50+' checks'):(up.total?('over '+up.total+' checks'):'no checks yet'));
+ setText('upd',d.lastPollAt?('Updated '+rel(d.lastPollAt)+'. This page redraws every '+REFRESH_SECS+'s.'):'');
+ var list=Array.isArray(d.history)?d.history:[];
+ var node=el('hist');if(!node)return;
+ if(!list.length){node.innerHTML='<p class="empty">No checks recorded yet. New checks show up here the moment they finish.</p>';return;}
+ var rows=list.slice(0,50).map(function(e){
+  var ok=e&&e.ok!==false;
+  var at=(e&&e.at)?rel(e.at):DASH;
+  var f=num(e&&e.fetched),r=num(e&&e.replicated),sk=num(e&&e.skipped);
+  var cells=(f!=null?f:DASH)+' / '+(r!=null?r:DASH)+' / '+(sk!=null?sk:DASH);
+  var took=num(e&&e.ms)!=null?(Number(e.ms)/1000).toFixed(1)+'s':DASH;
+  var note=e&&e.error?escErr(e.error):(e&&e.baselined?('baselined '+e.baselined):h(e&&e.reason||''));
+  return '<tr><td class="num">'+h(at)+'</td><td>'+'<span class="pill '+(ok?'ok':'bad')+'">'+(ok?'ok':'failed')+'</span>'+'</td><td class="num">'+cells+'</td><td class="num">'+h(took)+'</td><td>'+note+'</td></tr>';
+ }).join('');
+ node.innerHTML='<table><caption class="vh">Recent mail checks, newest first</caption><thead><tr><th scope="col">When</th><th scope="col">Result</th><th scope="col">Found / filed / skipped</th><th scope="col">Took</th><th scope="col">Note</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}
+function refresh(){
+ return fetch('/api/history',{method:'GET'}).then(function(r){return r.json();}).then(function(d){
+  if(!d||typeof d!=='object'||d.success===false){verdict(null);return null;}
+  try{render(d);}catch(e){setText('st-t','This page could not draw the numbers');}
+  countdown=REFRESH_SECS;return d;
+ }).catch(function(){verdict(null);return null;});
+}
+refresh();setInterval(function(){countdown--;if(countdown<=0){countdown=REFRESH_SECS;refresh();}},1000);
+</script>
+</body>
+</html>`);
 });
 
 app.post('/api/poll-now', requireAdmin, async (_req, res) => {
