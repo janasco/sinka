@@ -39,6 +39,8 @@ DRY_RUN = "0"
 POLL_BATCH_LIMIT = "5"
 # Max parallel IMAP APPENDs per fan-out (0 = unlimited).
 APPEND_CONCURRENCY = "3"
+# Days of poll history kept for /status (older entries are pruned).
+RETENTION_DAYS = "60"
 
 # NOTE: no [[d1_databases]] binding on purpose — the container reaches D1
 # over the REST API (src/store_d1.js) using the secret IDs above, so the

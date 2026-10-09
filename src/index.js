@@ -50,12 +50,21 @@ const state = {
 };
 
 // ---- Poll history for the public /status page ("trace back") ----
-// In-memory ring buffer, persisted best-effort to data/history.json so a
+// In-memory buffer, persisted best-effort to data/history.json so a
 // restart does not wipe the outage trail. Entries carry counts only —
 // never addresses, subjects or message IDs — so /api/history can stay public.
-const HISTORY_LIMIT = 200;
+// Retention is time-based (RETENTION_DAYS, default 60): anything older is
+// dropped on load and on every record, so the file cannot grow without
+// bound. HISTORY_LIMIT is only a backstop for absurd poll cadences.
+const HISTORY_LIMIT = 20000;
+const HISTORY_RETENTION_DAYS = Math.max(1, Number.parseInt(process.env.RETENTION_DAYS || '60', 10) || 60);
 const HISTORY_FILE = path.join(cfg.dataDir, 'history.json');
 let history = [];
+function pruneHistory() {
+  const cutoff = Date.now() - HISTORY_RETENTION_DAYS * 86400000;
+  history = history.filter((e) => Number.isFinite(Date.parse(e?.at)) && Date.parse(e.at) >= cutoff);
+  if (history.length > HISTORY_LIMIT) history = history.slice(-HISTORY_LIMIT);
+}
 try {
   fs.mkdirSync(cfg.dataDir, { recursive: true });
   if (fs.existsSync(HISTORY_FILE)) {
@@ -81,6 +90,7 @@ try {
         .slice(-HISTORY_LIMIT);
     }
   }
+  pruneHistory();
 } catch { /* non-fatal: history starts empty */ }
 
 function saveHistory() {
@@ -108,7 +118,7 @@ function recordHistory(entry) {
     consecutiveErrors: state.consecutiveErrors,
     ...(entry?.error ? { error: String(entry.error).slice(0, 300) } : {}),
   });
-  if (history.length > HISTORY_LIMIT) history = history.slice(-HISTORY_LIMIT);
+  pruneHistory();
   saveHistory();
 }
 
@@ -1469,6 +1479,7 @@ app.get('/api/history', (_req, res) => {
       ...(last.error ? { error: String(last.error).slice(0, 300) } : {}),
     },
     uptime: historySummary(),
+    retentionDays: HISTORY_RETENTION_DAYS,
     history: [...history].reverse().slice(0, 100),
   });
 });
@@ -1548,6 +1559,7 @@ footer{margin-top:1.4rem;padding-top:1.1rem;border-top:1px solid var(--line);dis
 <section class="card" aria-labelledby="h-h">
 <h2 id="h-h" style="font-size:var(--fs-m);margin:0 0 .8rem">Recent checks</h2>
 <div id="hist"><p class="empty">Waiting for the first answer from the server.</p></div>
+<p class="fine" id="ret" style="margin-top:.6rem"></p>
 </section>
 </main>
 <footer>
@@ -1599,6 +1611,7 @@ function render(d){
  setText('upd',d.lastPollAt?('Updated '+rel(d.lastPollAt)+'. This page redraws every '+REFRESH_SECS+'s.'):'');
  var list=Array.isArray(d.history)?d.history:[];
  var node=el('hist');if(!node)return;
+ setText('ret',d.retentionDays?('Keeps the last '+d.retentionDays+' days of checks.'):'');
  if(!list.length){node.innerHTML='<p class="empty">No checks recorded yet. New checks show up here the moment they finish.</p>';return;}
  var rows=list.slice(0,50).map(function(e){
   var ok=e&&e.ok!==false;

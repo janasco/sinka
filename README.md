@@ -143,6 +143,7 @@ Everything lives in `.env` (see [`.env.example`](.env.example)) or, on the edge,
 | `ALERT_THRESHOLD` | Consecutive failed checks before that alert fires. | `3` |
 | `APPEND_CONCURRENCY` | Copy into at most this many inboxes at once, to be gentler on Gmail and small containers. `0` means all at once. | `3` |
 | `POLL_BATCH_LIMIT` | Max messages pulled per poll; a backlog drains oldest-first over successive polls instead of all bodies at once. | `5` |
+| `RETENTION_DAYS` | Days of poll history kept for `/status`; older entries are pruned. | `60` |
 | `CATCHUP_LIMIT` | On the first run, if the source has more unread mail than this, Sinka marks it read and copies none of it. | `25` |
 | `PORT` | The local port the dashboard listens on. | `8788` |
 
@@ -191,6 +192,8 @@ numbers, and the recent checks newest-first, so an outage can be traced back.
 - The last 200 checks are kept in memory and persisted to `data/history.json`, so
   the trail survives a restart. `GET /api/status` (private) carries the same trail
   alongside the full detail.
+- Retention is time-based: entries older than `RETENTION_DAYS` (default 60) are
+  pruned on every poll, so the history file cannot grow without bound.
 
 ## Safety notes
 

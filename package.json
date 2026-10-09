@@ -27,6 +27,6 @@
     "mailparser": "^3.9.28"
   },
   "devDependencies": {
-    "wrangler": "^4.136.1"
+    "wrangler": "^4.149.0"
   }
 }
