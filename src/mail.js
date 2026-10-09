@@ -71,15 +71,19 @@ function isAutoDisabled(user) {
   return sinkHealth.get(user)?.autoDisabled === true;
 }
 
-// Optional APPEND concurrency cap to ease Gmail throttling.
+// Optional APPEND concurrency cap to ease Gmail throttling and bound memory.
 // Env APPEND_CONCURRENCY="N": at most N concurrent IMAP APPENDs per
-// fan-out. Unset, empty, non-numeric, or <= 0 means unlimited
-// (today's fully-parallel behavior). Read inside the fan-out functions
-// from process.env so tests/canary can change it without a restart.
+// fan-out. Unset or empty means the default (3 — gentle on Gmail and on
+// small edge containers). Explicit 0 or a negative number means unlimited
+// (today's fully-parallel behavior); anything else unparseable falls back
+// to the default. Read inside the fan-out functions from process.env so
+// tests/canary can change it without a restart.
+export const APPEND_CONCURRENCY_DEFAULT = 3;
 export function getAppendConcurrency(env = process.env) {
   const raw = env?.APPEND_CONCURRENCY;
-  if (raw === undefined || raw === null || String(raw).trim() === '') return 0;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return APPEND_CONCURRENCY_DEFAULT;
   const n = Number.parseInt(String(raw).trim(), 10);
+  if (Number.isNaN(n)) return APPEND_CONCURRENCY_DEFAULT;
   if (!Number.isFinite(n) || n < 1) return 0;
   return n;
 }
@@ -284,7 +288,11 @@ function getHeaderText(headers, name) {
 // Fetch UNSEEN messages since lookback window. Returns raw RFC822 per message.
 // Does NOT mark anything Seen unless markSeen is true (caller decides,
 // so a huge backlog can be baselined without forwarding first).
-export async function fetchNewMessages(cfg, { markSeen = false } = {}) {
+// `limit` caps how many messages are pulled (oldest first): a big UNSEEN
+// backlog must drain a few messages per poll, never all bodies at once —
+// downloading everything in one poll OOMs small edge containers and the
+// crash loses the whole poll (nothing flagged, nothing remembered).
+export async function fetchNewMessages(cfg, { markSeen = false, limit = 0 } = {}) {
   const client = new ImapFlow({
     host: 'imap.gmail.com',
     port: 993,
@@ -326,6 +334,7 @@ export async function fetchNewMessages(cfg, { markSeen = false } = {}) {
         date: get('date'),
         raw,
       });
+      if (Number(limit) > 0 && out.length >= Number(limit)) break;
       if (markSeen) {
         try {
           await client.messageFlagsAdd(msg.uid, ['\\Seen']);
@@ -412,10 +421,10 @@ export async function replicateMessage(cfg, msg, { forwardList } = {}) {
     return list.map((rcpt) => ({ to: rcpt, ok: true, skipped: 'auto-notice' }));
   }
 
-  // Same raw bytes into every active mailbox, in parallel (each sink is a
-  // different account, so limits are independent). APPEND_CONCURRENCY=N
-  // caps how many APPENDs run at once to ease Gmail throttling
-  // (unset/<=0/invalid = unlimited, today's behavior).
+  // Same raw bytes into every active mailbox, in parallel lanes (each sink
+  // is a different account, so limits are independent). APPEND_CONCURRENCY=N
+  // caps how many APPENDs run at once to ease Gmail throttling and bound
+  // memory (default 3, explicit 0 = unlimited).
   // Sinks disabled with a '-' prefix in DEST_SINKS are skipped (kept for config).
   // Sinks auto-disabled after repeated APPEND failures are skipped too.
   const active = cfg.sinks.filter((s) => s.enabled !== false && !isAutoDisabled(s.user));

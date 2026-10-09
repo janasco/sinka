@@ -16,21 +16,26 @@ function restoreEnv(saved) {
   else process.env.APPEND_CONCURRENCY = saved;
 }
 
-test('getAppendConcurrency: unset/empty/invalid/<=0 means unlimited (0)', async (t) => {
+test('getAppendConcurrency: unset/empty/invalid falls back to the default (3)', async (t) => {
   const saved = saveEnv();
   t.after(() => restoreEnv(saved));
   delete process.env.APPEND_CONCURRENCY;
-  assert.equal(getAppendConcurrency(), 0);
+  assert.equal(getAppendConcurrency(), 3);
   process.env.APPEND_CONCURRENCY = '';
-  assert.equal(getAppendConcurrency(), 0);
+  assert.equal(getAppendConcurrency(), 3);
+  process.env.APPEND_CONCURRENCY = 'abc';
+  assert.equal(getAppendConcurrency(), 3);
+  process.env.APPEND_CONCURRENCY = '2.9';
+  assert.equal(getAppendConcurrency(), 2);
+});
+
+test('getAppendConcurrency: explicit 0 or negative means unlimited (0)', async (t) => {
+  const saved = saveEnv();
+  t.after(() => restoreEnv(saved));
   process.env.APPEND_CONCURRENCY = '0';
   assert.equal(getAppendConcurrency(), 0);
   process.env.APPEND_CONCURRENCY = '-2';
   assert.equal(getAppendConcurrency(), 0);
-  process.env.APPEND_CONCURRENCY = 'abc';
-  assert.equal(getAppendConcurrency(), 0);
-  process.env.APPEND_CONCURRENCY = '2.9';
-  assert.equal(getAppendConcurrency(), 2);
 });
 
 test('getAppendConcurrency: N>=1 parses as int', async (t) => {

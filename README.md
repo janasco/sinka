@@ -141,7 +141,8 @@ Everything lives in `.env` (see [`.env.example`](.env.example)) or, on the edge,
 | `DATA_DIR` | Folder holding `data/seen.json` and `data/failures.log`. | `./data` |
 | `ALERT_NTFY_TOPIC` | An ntfy.sh topic for one outage alert. Empty means no alerts. | empty |
 | `ALERT_THRESHOLD` | Consecutive failed checks before that alert fires. | `3` |
-| `APPEND_CONCURRENCY` | Copy into at most this many inboxes at once, to be gentler on Gmail. | unset, meaning all at once |
+| `APPEND_CONCURRENCY` | Copy into at most this many inboxes at once, to be gentler on Gmail and small containers. `0` means all at once. | `3` |
+| `POLL_BATCH_LIMIT` | Max messages pulled per poll; a backlog drains oldest-first over successive polls instead of all bodies at once. | `5` |
 | `CATCHUP_LIMIT` | On the first run, if the source has more unread mail than this, Sinka marks it read and copies none of it. | `25` |
 | `PORT` | The local port the dashboard listens on. | `8788` |
 

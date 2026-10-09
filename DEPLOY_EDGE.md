@@ -33,9 +33,7 @@ npx wrangler secret put ADMIN_TOKEN
 
 The container only gets the keys listed in `envVars` in `worker.js`.
 A secret set but not listed there never reaches the poller — add it to
-that list in the same change (this applies today to
-`ALERT_NTFY_TOPIC`, `ALERT_THRESHOLD`, `APPEND_CONCURRENCY` and
-`CATCHUP_LIMIT`, which are not in the list yet).
+that list in the same change.
 
 ## 3. Deploy
 

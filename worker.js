@@ -35,8 +35,11 @@ export class ReplicatorContainer extends Container {
     ALERT_NTFY_TOPIC: env.ALERT_NTFY_TOPIC ?? '',
     // Consecutive failed polls before the alert fires (src/index.js: 3).
     ALERT_THRESHOLD: env.ALERT_THRESHOLD ?? '3',
-    // Max parallel IMAP APPENDs per fan-out; ''/0 = unlimited (src/mail.js).
-    APPEND_CONCURRENCY: env.APPEND_CONCURRENCY ?? '',
+    // Max parallel IMAP APPENDs per fan-out; default 3 (src/mail.js).
+    // Explicit 0 = unlimited.
+    APPEND_CONCURRENCY: env.APPEND_CONCURRENCY ?? '3',
+    // Max messages pulled per poll; the backlog drains oldest-first.
+    POLL_BATCH_LIMIT: env.POLL_BATCH_LIMIT ?? '5',
     // First-run UNSEEN backlog cap; above it the inbox is baselined
     // instead of blasted (src/index.js: 25).
     CATCHUP_LIMIT: env.CATCHUP_LIMIT ?? '25',

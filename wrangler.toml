@@ -35,6 +35,10 @@ LOOKBACK_HOURS = "24"
 PORT = "8788"
 DATA_DIR = "./data"
 DRY_RUN = "0"
+# Backlog drains oldest-first, a few messages per poll (never all bodies at once).
+POLL_BATCH_LIMIT = "5"
+# Max parallel IMAP APPENDs per fan-out (0 = unlimited).
+APPEND_CONCURRENCY = "3"
 
 # NOTE: no [[d1_databases]] binding on purpose — the container reaches D1
 # over the REST API (src/store_d1.js) using the secret IDs above, so the

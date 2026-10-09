@@ -73,6 +73,7 @@ try {
           retried: Number.isFinite(Number(e.retried)) ? Number(e.retried) : undefined,
           skipped: Number.isFinite(Number(e.skipped)) ? Number(e.skipped) : undefined,
           pending: Number.isFinite(Number(e.pending)) ? Number(e.pending) : undefined,
+          backlog: Number.isFinite(Number(e.backlog)) ? Number(e.backlog) : undefined,
           baselined: Number.isFinite(Number(e.baselined)) ? Number(e.baselined) : undefined,
           consecutiveErrors: Number.isFinite(Number(e.consecutiveErrors)) ? Number(e.consecutiveErrors) : 0,
           ...(e.error ? { error: String(e.error).slice(0, 300) } : {}),
@@ -102,6 +103,7 @@ function recordHistory(entry) {
     ...(Number.isFinite(Number(entry?.retried)) ? { retried: Number(entry.retried) } : {}),
     ...(Number.isFinite(Number(entry?.skipped)) ? { skipped: Number(entry.skipped) } : {}),
     ...(Number.isFinite(Number(entry?.pending)) ? { pending: Number(entry.pending) } : {}),
+    ...(Number.isFinite(Number(entry?.backlog)) ? { backlog: Number(entry.backlog) } : {}),
     ...(Number.isFinite(Number(entry?.baselined)) ? { baselined: Number(entry.baselined) } : {}),
     consecutiveErrors: state.consecutiveErrors,
     ...(entry?.error ? { error: String(entry.error).slice(0, 300) } : {}),
@@ -161,6 +163,11 @@ async function poll(reason = 'timer') {
     // Baseline instead: mark all as Seen, forward nothing. Only genuinely
     // new arrivals after this point get replicated.
     const CATCHUP_LIMIT = Number(process.env.CATCHUP_LIMIT || 25);
+    // Crash-loop guard: never pull more than a few messages per poll.
+    // A big UNSEEN backlog drains oldest-first over successive polls instead
+    // of downloading every body at once and dying mid-fan-out (which flags
+    // nothing, remembers nothing, and re-downloads everything next time).
+    const POLL_BATCH_LIMIT = Math.max(1, Number.parseInt(process.env.POLL_BATCH_LIMIT || '5', 10) || 5);
     // Cheap count first: baselining 1000 old messages must not download bodies.
     const pendingUids = await withTimeout(countUnseen(cfg), IMAP_BUDGET_MS, 'countUnseen');
     if (store.size() === 0 && pendingUids.length > CATCHUP_LIMIT) {
@@ -182,7 +189,10 @@ async function poll(reason = 'timer') {
       recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: pendingUids.length, replicated: 0, skipped: 0, baselined: pendingUids.length });
       return state.lastResult;
     }
-    const messages = await withTimeout(fetchNewMessages(cfg), IMAP_BUDGET_MS, 'fetchNewMessages');
+    const messages = await withTimeout(fetchNewMessages(cfg, { limit: POLL_BATCH_LIMIT }), IMAP_BUDGET_MS, 'fetchNewMessages');
+    if (pendingUids.length > messages.length) {
+      console.log(`[poll] backlog: ${pendingUids.length} unseen, pulling ${messages.length} oldest this poll (batch limit ${POLL_BATCH_LIMIT})`);
+    }
     let replicated = 0;
     let skipped = 0;
     let retried = 0;
@@ -268,13 +278,14 @@ async function poll(reason = 'timer') {
       retried,
       skipped,
       pending: getPending().length,
+      backlog: pendingUids.length,
       destinations: cfg.forwardList.length,
       details: details.slice(0, 20),
     };
     state.consecutiveErrors = 0;
     alerted = false;
-    console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} (${state.lastResult.ms}ms)`);
-    recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: messages.length, replicated, retried, skipped, pending: getPending().length });
+    console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} backlog=${pendingUids.length} (${state.lastResult.ms}ms)`);
+    recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: messages.length, replicated, retried, skipped, pending: getPending().length, backlog: pendingUids.length });
     return state.lastResult;
     } catch (err) {
       state.consecutiveErrors++;
@@ -1453,6 +1464,7 @@ app.get('/api/history', (_req, res) => {
       retried: Number.isFinite(Number(last.retried)) ? Number(last.retried) : null,
       skipped: Number.isFinite(Number(last.skipped)) ? Number(last.skipped) : null,
       pending: Number.isFinite(Number(last.pending)) ? Number(last.pending) : (Array.isArray(getPending()) ? getPending().length : null),
+      backlog: Number.isFinite(Number(last.backlog)) ? Number(last.backlog) : null,
       baselined: Number.isFinite(Number(last.baselined)) ? Number(last.baselined) : null,
       ...(last.error ? { error: String(last.error).slice(0, 300) } : {}),
     },
@@ -1625,9 +1637,11 @@ app.post('/api/baseline', requireAdmin, async (_req, res) => {
     if (setupNeeded) {
       return res.status(503).json({ success: false, error: setupNeeded });
     }
-    const messages = await withTimeout(fetchNewMessages(cfg), IMAP_BUDGET_MS, 'fetchNewMessages');
-    await withTimeout(markUidsSeen(cfg, messages.map((m) => m.uid)), IMAP_BUDGET_MS, 'baselineMark');
-    res.json({ success: true, baselined: messages.length });
+    // UIDs only: baselining must never download bodies just to skip them —
+    // on a big backlog that download alone can kill a small container.
+    const unseenUids = await withTimeout(countUnseen(cfg), IMAP_BUDGET_MS, 'baselineCount');
+    await withTimeout(markUidsSeen(cfg, unseenUids), IMAP_BUDGET_MS, 'baselineMark');
+    res.json({ success: true, baselined: unseenUids.length });
   } catch (err) {
     res.status(502).json({ success: false, error: err?.message || String(err) });
   }

@@ -30,7 +30,8 @@ secrets on the edge. Required: `GMAIL_USER`, `GMAIL_APP_PASSWORD`,
 `D1_DATABASE_ID`, `CLOUDFLARE_API_TOKEN`, `ADMIN_TOKEN`.
 Optional: `ALERT_NTFY_TOPIC` + `ALERT_THRESHOLD` (outage buzz via
 ntfy.sh, empty topic = off), `APPEND_CONCURRENCY` (cap parallel
-copies, unset = all at once), `CATCHUP_LIMIT` (default 25),
+copies, default 3, 0 = all at once), `POLL_BATCH_LIMIT` (max messages
+per poll, default 5), `CATCHUP_LIMIT` (default 25),
 `POLL_INTERVAL_MS` (default 300000 on the edge, 60000 with no
 `.env` value), `ADMIN_TOKEN` (empty = rely on Cloudflare Access alone).
 
