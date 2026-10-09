@@ -44,7 +44,7 @@ Different job, not strictly better or worse — pick the one that matches how yo
 
 ## What it does when you install it
 
-1. **It checks the source inbox on its own timer** — every 5 minutes out of the box — signing in over IMAP and looking for unread mail.
+1. **It checks the source inbox on its own timer** — every 5 minutes out of the box — signing in over IMAP and listing everything from the last `LOOKBACK_HOURS` (24 out of the box), read or unread. Opening mail there never hides it from the team, and Sinka never touches read state.
 2. **For each new message it files a copy into every active team inbox.** The bytes are stored as they arrived. Nothing is forwarded, nothing is re-sent, and the original stays where it is.
 3. **Automatic replies and delivery notices are skipped**, so a failed copy never bounces around the team.
 4. **It writes down every message it has filed** (in `data/seen.json` locally, in a D1 table on the edge), so a restart or a re-check never files the same letter twice.
@@ -144,7 +144,7 @@ Everything lives in `.env` (see [`.env.example`](.env.example)) or, on the edge,
 | `APPEND_CONCURRENCY` | Copy into at most this many inboxes at once, to be gentler on Gmail and small containers. `0` means all at once. | `3` |
 | `POLL_BATCH_LIMIT` | Max messages pulled per poll; a backlog drains oldest-first over successive polls instead of all bodies at once. | `5` |
 | `RETENTION_DAYS` | Days of poll history kept for `/status`; older entries are pruned. | `60` |
-| `CATCHUP_LIMIT` | On the first run, if the source has more unread mail than this, Sinka marks it read and copies none of it. | `25` |
+| `CATCHUP_LIMIT` | On the first run, if the source holds more unfiled mail than this, Sinka remembers it all and copies none of it. | `25` |
 | `PORT` | The local port the dashboard listens on. | `8788` |
 
 On the edge, `CLOUDFLARE_ACCOUNT_ID`, `D1_DATABASE_ID` and `CLOUDFLARE_API_TOKEN` are

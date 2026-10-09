@@ -172,7 +172,7 @@ export function getPending() {
 }
 
 // Retry every pending (messageId → sink) pair via the same IMAP APPEND
-// path. Updates attempts + sink health; caller decides Seen-flagging.
+// path. Updates attempts + sink health; caller decides remembering.
 export async function replicatePending(cfg) {
   const entries = [...pending.entries()];
   const settled = await mapLimit(entries, getAppendConcurrency(), async ([key, entry]) => {
@@ -279,20 +279,12 @@ export function parseSinks(raw) {
     .filter(Boolean);
 }
 
-function getHeaderText(headers, name) {
-  const v = headers.get(name);
-  if (!v) return '';
-  return Array.isArray(v) ? String(v[0] || '') : String(v);
-}
-
-// Fetch UNSEEN messages since lookback window. Returns raw RFC822 per message.
-// Does NOT mark anything Seen unless markSeen is true (caller decides,
-// so a huge backlog can be baselined without forwarding first).
-// `limit` caps how many messages are pulled (oldest first): a big UNSEEN
-// backlog must drain a few messages per poll, never all bodies at once —
-// downloading everything in one poll OOMs small edge containers and the
-// crash loses the whole poll (nothing flagged, nothing remembered).
-export async function fetchNewMessages(cfg, { markSeen = false, limit = 0 } = {}) {
+// Envelope-only list of EVERY message in the lookback window, read or
+// unread. Cheap: no bodies, no flags touched. Whether mail was opened in
+// the source inbox must never decide whether the team gets a copy — the
+// dedupe store (D1/file), not the Seen flag, is what remembers what was
+// already filed. Returned oldest-first (UID ascending).
+export async function listWindowMessages(cfg) {
   const client = new ImapFlow({
     host: 'imap.gmail.com',
     port: 993,
@@ -309,22 +301,20 @@ export async function fetchNewMessages(cfg, { markSeen = false, limit = 0 } = {}
     await client.mailboxOpen('INBOX');
     const since = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000);
     const out = [];
-    // UNSEEN + SINCE keeps first run bounded; steady-state is just UNSEEN.
-    for await (const msg of client.fetch({ seen: false, since }, {
+    for await (const msg of client.fetch({ since }, {
       envelope: true,
       headers: true,
-      bodyParts: ['TEXT'],
-      source: true,
     })) {
       const headers = msg.headers; // Map-like from imapflow
       const get = (n) => {
         try {
-          return getHeaderText(headers, n);
+          const v = headers.get(n);
+          if (!v) return '';
+          return Array.isArray(v) ? String(v[0] || '') : String(v);
         } catch {
           return '';
         }
       };
-      const raw = msg.source?.toString('utf8') || '';
       out.push({
         uid: msg.uid,
         messageId: get('message-id') || `uid-${msg.uid}`,
@@ -332,15 +322,9 @@ export async function fetchNewMessages(cfg, { markSeen = false, limit = 0 } = {}
         to: get('to'),
         subject: get('subject'),
         date: get('date'),
-        raw,
       });
-      if (Number(limit) > 0 && out.length >= Number(limit)) break;
-      if (markSeen) {
-        try {
-          await client.messageFlagsAdd(msg.uid, ['\\Seen']);
-        } catch { /* non-fatal */ }
-      }
     }
+    out.sort((a, b) => a.uid - b.uid);
     return out;
   } finally {
     try {
@@ -349,8 +333,13 @@ export async function fetchNewMessages(cfg, { markSeen = false, limit = 0 } = {}
   }
 }
 
-// Lightweight UNSEEN count (no bodies) — used to decide baseline vs process.
-export async function countUnseen(cfg) {
+// Bodies for explicit UIDs (from listWindowMessages). One IMAP session,
+// no flags touched. UIDs are spelled n:n in the range: a bare single UID
+// is silently dropped by some server/library combinations.
+export async function fetchBodiesByUids(cfg, uids) {
+  const list = [...new Set((uids || []).filter((u) => Number.isFinite(Number(u))))]
+    .map((u) => Number(u)).sort((a, b) => a - b);
+  if (!list.length) return [];
   const client = new ImapFlow({
     host: 'imap.gmail.com',
     port: 993,
@@ -364,33 +353,37 @@ export async function countUnseen(cfg) {
   await client.connect();
   try {
     await client.mailboxOpen('INBOX');
-    const since = new Date(Date.now() - cfg.lookbackHours * 3600 * 1000);
-    const uids = await client.search({ seen: false, since });
-    return uids;
-  } finally {
-    try {
-      await client.logout();
-    } catch { /* ignore */ }
-  }
-}
-// Mark specific UIDs as Seen (used after a message is handled, or to
-// baseline a backlog without forwarding it).
-export async function markUidsSeen(cfg, uids) {
-  if (!uids.length) return;
-  const client = new ImapFlow({
-    host: 'imap.gmail.com',
-    port: 993,
-    secure: true,
-    auth: { user: cfg.gmailUser, pass: cfg.appPassword },
-    logger: false,
-    greetingTimeout: 15000,
-    connectionTimeout: 30000,
-    socketTimeout: 90000,
-  });
-  await client.connect();
-  try {
-    await client.mailboxOpen('INBOX');
-    await client.messageFlagsAdd(uids, ['\\Seen']);
+    const range = list.map((u) => `${u}:${u}`).join(',');
+    const byUid = new Map();
+    for await (const msg of client.fetch(range, {
+      envelope: true,
+      headers: true,
+      bodyParts: ['TEXT'],
+      source: true,
+    }, { uid: true })) {
+      const headers = msg.headers; // Map-like from imapflow
+      const get = (n) => {
+        try {
+          const v = headers.get(n);
+          if (!v) return '';
+          return Array.isArray(v) ? String(v[0] || '') : String(v);
+        } catch {
+          return '';
+        }
+      };
+      const raw = msg.source?.toString('utf8') || '';
+      byUid.set(msg.uid, {
+        uid: msg.uid,
+        messageId: get('message-id') || `uid-${msg.uid}`,
+        from: get('from'),
+        to: get('to'),
+        subject: get('subject'),
+        date: get('date'),
+        raw,
+      });
+    }
+    // Oldest first; silently-missing UIDs (expunged mid-poll) are skipped.
+    return list.map((u) => byUid.get(u)).filter(Boolean);
   } finally {
     try {
       await client.logout();
@@ -431,7 +424,7 @@ export async function replicateMessage(cfg, msg, { forwardList } = {}) {
   if (!active.length) {
     if (!cfg.sinks.length) console.error('[send] DEST_SINKS is empty — skipping. Fill per-inbox App Passwords in .env.');
     else console.error('[send] all sinks are disabled (-) — skipping.');
-    // No code => transient => stays unseen, retried next poll (no silent loss).
+    // No code => transient => not remembered, retried next poll (no silent loss).
     return list.map((rcpt) => ({ to: rcpt, ok: false, error: 'DEST_SINKS empty' }));
   }
   const settled = await mapLimit(

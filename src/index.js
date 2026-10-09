@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createStoreAuto } from './store_d1.js';
-import { loadConfig, parseSinks, fetchNewMessages, countUnseen, markUidsSeen, replicateMessage, replicatePending, getPending, appendTestMessage, getAutoDisabled } from './mail.js';
+import { loadConfig, parseSinks, listWindowMessages, fetchBodiesByUids, replicateMessage, replicatePending, getPending, appendTestMessage, getAutoDisabled } from './mail.js';
 
 const args = new Set(process.argv.slice(2));
 const runOnce = args.has('--once');
@@ -168,60 +168,67 @@ async function poll(reason = 'timer') {
     }
     const started = Date.now();
     try {
-    // First-run safety: if the inbox already holds a big UNSEEN backlog,
-    // do NOT blast thousands of copies (Gmail caps ~500 sends/day).
-    // Baseline instead: mark all as Seen, forward nothing. Only genuinely
-    // new arrivals after this point get replicated.
+    // First-run safety: if the inbox already holds a big pile of mail that
+    // was never filed, do NOT blast thousands of copies. Remember it all
+    // without forwarding instead. Only genuinely new arrivals after this
+    // point get replicated. (Read state is never touched: the dedupe store,
+    // not the Seen flag, is what remembers.)
     const CATCHUP_LIMIT = Number(process.env.CATCHUP_LIMIT || 25);
-    // Crash-loop guard: never pull more than a few messages per poll.
-    // A big UNSEEN backlog drains oldest-first over successive polls instead
-    // of downloading every body at once and dying mid-fan-out (which flags
-    // nothing, remembers nothing, and re-downloads everything next time).
+    // Crash-loop guard: never pull more than a few bodies per poll.
+    // A big backlog drains oldest-first over successive polls instead
+    // of downloading every body at once and dying mid-fan-out (which
+    // remembers nothing and re-downloads everything next time).
     const POLL_BATCH_LIMIT = Math.max(1, Number.parseInt(process.env.POLL_BATCH_LIMIT || '5', 10) || 5);
-    // Cheap count first: baselining 1000 old messages must not download bodies.
-    const pendingUids = await withTimeout(countUnseen(cfg), IMAP_BUDGET_MS, 'countUnseen');
-    if (store.size() === 0 && pendingUids.length > CATCHUP_LIMIT) {
-      await markUidsSeen(cfg, pendingUids);
+    // Cheap envelope-only list first (read or unread — opening mail in the
+    // source inbox must never decide whether the team gets a copy).
+    // Bodies are downloaded only for the few messages actually handled below.
+    const windowList = await withTimeout(listWindowMessages(cfg), IMAP_BUDGET_MS, 'listWindowMessages');
+    const fresh = windowList.filter((m) => !store.has(m.messageId));
+    if (store.size() === 0 && fresh.length > CATCHUP_LIMIT) {
+      for (const m of windowList) store.add(m.messageId);
       state.lastPollAt = new Date().toISOString();
       state.lastResult = {
         reason,
         ms: Date.now() - started,
-        fetched: pendingUids.length,
+        fetched: windowList.length,
         replicated: 0,
         skipped: 0,
-        baselined: pendingUids.length,
+        baselined: windowList.length,
         destinations: cfg.forwardList.length,
         details: [],
       };
-      console.log(`[poll] BASELINED ${pendingUids.length} existing messages (no forwarding). New mail from here on will be replicated.`);
+      console.log(`[poll] BASELINED ${windowList.length} existing messages (remembered, no forwarding). New mail from here on will be replicated.`);
       state.consecutiveErrors = 0;
       alerted = false;
-      recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: pendingUids.length, replicated: 0, skipped: 0, baselined: pendingUids.length });
+      recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: windowList.length, replicated: 0, skipped: 0, baselined: windowList.length });
       return state.lastResult;
     }
-    const messages = await withTimeout(fetchNewMessages(cfg, { limit: POLL_BATCH_LIMIT }), IMAP_BUDGET_MS, 'fetchNewMessages');
-    if (pendingUids.length > messages.length) {
-      console.log(`[poll] backlog: ${pendingUids.length} unseen, pulling ${messages.length} oldest this poll (batch limit ${POLL_BATCH_LIMIT})`);
+    // Bodies only for the oldest few not-yet-filed messages.
+    const batch = fresh.slice(0, POLL_BATCH_LIMIT);
+    const messages = batch.length
+      ? await withTimeout(fetchBodiesByUids(cfg, batch.map((m) => m.uid)), IMAP_BUDGET_MS, 'fetchBodiesByUids')
+      : [];
+    if (fresh.length > messages.length) {
+      console.log(`[poll] backlog: ${fresh.length} unfiled, pulling ${messages.length} oldest this poll (batch limit ${POLL_BATCH_LIMIT})`);
     }
     let replicated = 0;
     let skipped = 0;
     let retried = 0;
     const details = [];
-    const uidsToFlag = [];
     // Retry previously failed per-sink copies FIRST — this is the sole
-    // retry path. Every touched message is then filed Seen+stored so it
-    // is never refetched; remaining failures stay queued for later polls
-    // (no duplicate copies, no refetch storms).
+    // retry path. Every touched message is then remembered in the store so
+    // it is never re-downloaded; remaining failures stay queued for later
+    // polls (no duplicate copies, no refetch storms). Read state in the
+    // source inbox is never touched.
     try {
       const retryResults = await withTimeout(replicatePending(cfg), IMAP_BUDGET_MS, 'replicatePending');
-      const retriedIds = new Map();
+      const retriedIds = new Set();
       for (const r of retryResults) {
         if (r.ok) retried++;
-        if (r.messageId && !retriedIds.has(r.messageId)) retriedIds.set(r.messageId, r.uid);
+        if (r.messageId) retriedIds.add(r.messageId);
       }
-      for (const [id, uid] of retriedIds) {
+      for (const id of retriedIds) {
         store.add(id);
-        if (uid != null) uidsToFlag.push(uid);
       }
       if (retryResults.length) {
         details.push({ messageId: `retries (${retryResults.length} attempt${retryResults.length === 1 ? '' : 's'})`, from: '', subject: '', results: retryResults.map((r) => ({ to: r.to, ok: r.ok, ...(r.ok ? { via: r.via || 'append' } : { error: r.error }) })) });
@@ -233,7 +240,6 @@ async function poll(reason = 'timer') {
     for (const msg of messages) {
       const mStart = Date.now();
       if (store.has(msg.messageId)) {
-        uidsToFlag.push(msg.uid);
         skipped++;
         continue;
       }
@@ -243,23 +249,20 @@ async function poll(reason = 'timer') {
       if (skippedNotice) {
         // Bounces/auto-replies: never re-blast, just file away.
         store.add(msg.messageId);
-        uidsToFlag.push(msg.uid);
         skipped++;
         details.push({ messageId: msg.messageId, from: msg.from, subject: msg.subject, results });
         continue;
       }
-      // Record as seen when at least one copy went out (or dry-run).
+      // Remember when at least one copy went out (or dry-run).
       // Permanent rejections (5xx, e.g. policy blocks) will never succeed —
       // file them to the failure log instead of retry-looping burns.
-      // Transient errors stay unseen for the next poll.
+      // Transient errors stay unremembered for the next poll.
       const permanent = failed.length > 0 && failed.every((r) => Number(r.code) >= 500 && Number(r.code) < 600);
       if (failed.length < results.length || cfg.dryRun) {
         store.add(msg.messageId);
-        uidsToFlag.push(msg.uid);
         replicated++;
       } else if (permanent) {
         store.add(msg.messageId);
-        uidsToFlag.push(msg.uid);
         try {
           fs.appendFileSync(
             path.join(cfg.dataDir, 'failures.log'),
@@ -271,14 +274,6 @@ async function poll(reason = 'timer') {
       details.push({ messageId: msg.messageId, from: msg.from, subject: msg.subject, results });
       console.log(`[poll] msg done subject=${JSON.stringify((msg.subject || '').slice(0, 60))} ok=${failed.length < results.length} failed=${failed.length}/${results.length} (${Date.now() - mStart}ms)`);
     }
-    // Single flag session for the whole poll (not one connection per message).
-    if (uidsToFlag.length) {
-      try {
-        await withTimeout(markUidsSeen(cfg, uidsToFlag), IMAP_BUDGET_MS, 'markUidsSeen');
-      } catch (err) {
-        console.error('[poll] flagging failed (will retry next poll):', err?.message || err);
-      }
-    }
     state.lastPollAt = new Date().toISOString();
     state.lastResult = {
       reason,
@@ -288,14 +283,14 @@ async function poll(reason = 'timer') {
       retried,
       skipped,
       pending: getPending().length,
-      backlog: pendingUids.length,
+      backlog: fresh.length,
       destinations: cfg.forwardList.length,
       details: details.slice(0, 20),
     };
     state.consecutiveErrors = 0;
     alerted = false;
-    console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} backlog=${pendingUids.length} (${state.lastResult.ms}ms)`);
-    recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: messages.length, replicated, retried, skipped, pending: getPending().length, backlog: pendingUids.length });
+    console.log(`[poll] fetched=${messages.length} replicated=${replicated} retried=${retried} skipped=${skipped} pending=${getPending().length} backlog=${fresh.length} (${state.lastResult.ms}ms)`);
+    recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: messages.length, replicated, retried, skipped, pending: getPending().length, backlog: fresh.length });
     return state.lastResult;
     } catch (err) {
       state.consecutiveErrors++;
@@ -818,7 +813,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <div class="act-btns">
         <button type="button" class="care" id="btn-base">Skip the backlog</button>
       </div>
-      <p>&ldquo;Skip the backlog&rdquo; marks everything currently unread in the source inbox as read and copies none of it. Use it once, after a holiday or a flood, so the pile you never wanted is not copied into every team inbox. It asks you to confirm first.</p>
+      <p>&ldquo;Skip the backlog&rdquo; remembers everything currently in the source inbox and copies none of it. Use it once, after a holiday or a flood, so the pile you never wanted is not copied into every team inbox. It asks you to confirm first.</p>
     </div>
 
     <div id="result" role="status" aria-live="polite" tabindex="-1" aria-busy="false" hidden>
@@ -878,7 +873,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
             <li><b>Check for mail now</b> &mdash; look for new mail straight away instead of waiting for the timer.</li>
             <li><b>Refresh the numbers</b> &mdash; redraw this page with the newest information.</li>
             <li><b>Send a test copy</b> &mdash; send one labelled test message to every active inbox, to prove a fixed sign-in works.</li>
-            <li><b>Skip the backlog</b> &mdash; mark everything currently unread as read and copy none of it. Asks you to confirm.</li>
+            <li><b>Skip the backlog</b> &mdash; remember everything currently there and copy none of it. Asks you to confirm.</li>
           </ul>
         </div>
       </div>
@@ -1002,7 +997,7 @@ function outcome(o,ctx){
   if(!fails.length)return head+away+'.';
   return head+away+', '+fails.length+' failed: '+uniqReasons(fails).join('; ')+'.';}
  var base=num(o.baselined);
- if(base!=null)return'Marked '+base+' message'+(base===1?'':'s')+' as read and copied none of them. Sinka carries on with whatever arrives next.';
+ if(base!=null)return'Remembered '+base+' message'+(base===1?'':'s')+' and copied none of them. Sinka carries on with whatever arrives next.';
  var f=num(o.fetched);
  if(f!=null){
   if(!f)return'Looked in the source inbox just now. There was no new mail to copy.';
@@ -1407,7 +1402,7 @@ if(btnTest)btnTest.onclick=function(){var to=el('inp-to');runAction(btnTest,'Sen
 var btnTestFix=el('btn-test-fix');
 if(btnTestFix)btnTestFix.onclick=function(){var to=el('inp-to');runAction(btnTestFix,'Sending\u2026','test',function(){return api('/api/test-forward',{method:'POST',body:{to:to?to.value:''}});},false);};
 var btnBase=el('btn-base');
-if(btnBase)btnBase.onclick=function(){if(!confirm('Skip the backlog? This marks everything currently unread in the source inbox as read and copies none of it. It cannot be undone.'))return;
+if(btnBase)btnBase.onclick=function(){if(!confirm('Skip the backlog? This remembers everything currently in the source inbox and copies none of it. It cannot be undone.'))return;
  runAction(btnBase,'Skipping\u2026','base',function(){return api('/api/baseline',{method:'POST',body:{}});},true);};
 var inpToken=el('inp-token');if(inpToken)inpToken.oninput=function(e){token=e.target.value.trim();};
 var inpTo=el('inp-to');if(inpTo)inpTo.oninput=function(){setText('fix-to',testTargetLine());};
@@ -1643,18 +1638,17 @@ app.post('/api/poll-now', requireAdmin, async (_req, res) => {
   res.json({ success: !result.error, ...result });
 });
 
-// POST /api/baseline - mark all current UNSEEN as Seen without forwarding.
-// Use after vacations/backlogs so only genuinely new mail gets replicated.
+// POST /api/baseline - remember everything currently in the source inbox
+// without forwarding it (read state untouched). Use after vacations/backlogs
+// so only genuinely new mail gets replicated.
 app.post('/api/baseline', requireAdmin, async (_req, res) => {
   try {
     if (setupNeeded) {
       return res.status(503).json({ success: false, error: setupNeeded });
     }
-    // UIDs only: baselining must never download bodies just to skip them —
-    // on a big backlog that download alone can kill a small container.
-    const unseenUids = await withTimeout(countUnseen(cfg), IMAP_BUDGET_MS, 'baselineCount');
-    await withTimeout(markUidsSeen(cfg, unseenUids), IMAP_BUDGET_MS, 'baselineMark');
-    res.json({ success: true, baselined: unseenUids.length });
+    const windowList = await withTimeout(listWindowMessages(cfg), IMAP_BUDGET_MS, 'baselineList');
+    for (const m of windowList) store.add(m.messageId);
+    res.json({ success: true, baselined: windowList.length });
   } catch (err) {
     res.status(502).json({ success: false, error: err?.message || String(err) });
   }
