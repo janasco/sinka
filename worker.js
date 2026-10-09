@@ -41,7 +41,7 @@ export class ReplicatorContainer extends Container {
     // Max messages pulled per poll; the backlog drains oldest-first.
     POLL_BATCH_LIMIT: env.POLL_BATCH_LIMIT ?? '5',
     // Days of poll history kept for /status (data/history.json pruning).
-    RETENTION_DAYS: env.RETENTION_DAYS ?? '60',
+    RETENTION_DAYS: env.RETENTION_DAYS ?? '30',
     // First-run UNSEEN backlog cap; above it the inbox is baselined
     // instead of blasted (src/index.js: 25).
     CATCHUP_LIMIT: env.CATCHUP_LIMIT ?? '25',

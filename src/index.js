@@ -53,11 +53,11 @@ const state = {
 // In-memory buffer, persisted best-effort to data/history.json so a
 // restart does not wipe the outage trail. Entries carry counts only —
 // never addresses, subjects or message IDs — so /api/history can stay public.
-// Retention is time-based (RETENTION_DAYS, default 60): anything older is
+// Retention is time-based (RETENTION_DAYS, default 30): anything older is
 // dropped on load and on every record, so the file cannot grow without
 // bound. HISTORY_LIMIT is only a backstop for absurd poll cadences.
 const HISTORY_LIMIT = 20000;
-const HISTORY_RETENTION_DAYS = Math.max(1, Number.parseInt(process.env.RETENTION_DAYS || '60', 10) || 60);
+const HISTORY_RETENTION_DAYS = Math.max(1, Number.parseInt(process.env.RETENTION_DAYS || '30', 10) || 30);
 const HISTORY_FILE = path.join(cfg.dataDir, 'history.json');
 let history = [];
 function pruneHistory() {
