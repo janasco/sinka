@@ -40,6 +40,12 @@ export class ReplicatorContainer extends Container {
     APPEND_CONCURRENCY: env.APPEND_CONCURRENCY ?? '3',
     // Max messages pulled per poll; the backlog drains oldest-first.
     POLL_BATCH_LIMIT: env.POLL_BATCH_LIMIT ?? '5',
+    // Outage email via Resend (all three required, else disabled).
+    RESEND_API_KEY: env.RESEND_API_KEY ?? '',
+    ALERT_EMAIL_TO: env.ALERT_EMAIL_TO ?? '',
+    ALERT_EMAIL_FROM: env.ALERT_EMAIL_FROM ?? '',
+    // Optional public status URL quoted in the outage email.
+    ALERT_STATUS_URL: env.ALERT_STATUS_URL ?? '',
     // Days of poll history kept for /status (data/history.json pruning).
     RETENTION_DAYS: env.RETENTION_DAYS ?? '30',
     // First-run UNSEEN backlog cap; above it the inbox is baselined

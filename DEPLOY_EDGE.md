@@ -29,6 +29,15 @@ npx wrangler secret put CLOUDFLARE_API_TOKEN
 npx wrangler secret put ADMIN_TOKEN
 ```
 
+Outage email via Resend (optional, all three or nothing):
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put ALERT_EMAIL_TO
+npx wrangler secret put ALERT_EMAIL_FROM
+npx wrangler secret put ALERT_STATUS_URL
+```
+
 `GITHUB_TOKEN_*` stays local only (deploy/ops), never as a Worker secret.
 
 The container only gets the keys listed in `envVars` in `worker.js`.

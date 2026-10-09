@@ -141,6 +141,10 @@ Everything lives in `.env` (see [`.env.example`](.env.example)) or, on the edge,
 | `DATA_DIR` | Folder holding `data/seen.json` and `data/failures.log`. | `./data` |
 | `ALERT_NTFY_TOPIC` | An ntfy.sh topic for one outage alert. Empty means no alerts. | empty |
 | `ALERT_THRESHOLD` | Consecutive failed checks before that alert fires. | `3` |
+| `RESEND_API_KEY` | Resend API key for outage email. Worker secret only, never committed. | empty (off) |
+| `ALERT_EMAIL_TO` | Where the outage email goes. Needs the key + `ALERT_EMAIL_FROM` to fire. | empty (off) |
+| `ALERT_EMAIL_FROM` | Verified sender, e.g. `Sinka <status@example.com>`. Resend only sends from domains you verify. | empty (off) |
+| `ALERT_STATUS_URL` | Optional status link quoted in the outage email. | empty |
 | `APPEND_CONCURRENCY` | Copy into at most this many inboxes at once, to be gentler on Gmail and small containers. `0` means all at once. | `3` |
 | `POLL_BATCH_LIMIT` | Max messages pulled per poll; a backlog drains oldest-first over successive polls instead of all bodies at once. | `5` |
 | `RETENTION_DAYS` | Days of poll history kept for `/status`; older entries are pruned. | `30` |

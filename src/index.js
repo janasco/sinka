@@ -301,22 +301,47 @@ async function poll(reason = 'timer') {
       state.lastResult = { reason, error: err?.message || String(err) };
       console.error('[poll] failed:', err?.message || err, `(backing off ${Math.round(backoffMs / 60000)}min)`);
       // Outage alerting: notify once when this streak FIRST reaches threshold.
-      // Empty topic = disabled. Fire-and-forget; alert failure never breaks polling.
+      // Two channels, each independently disabled when unconfigured:
+      // ntfy.sh push (ALERT_NTFY_TOPIC) and email via Resend (RESEND_API_KEY
+      // + ALERT_EMAIL_TO + ALERT_EMAIL_FROM). Fire-and-forget; alert failure
+      // never breaks polling, and keys never reach the logs.
       try {
         const parsedThreshold = Number.parseInt(String(process.env.ALERT_THRESHOLD ?? '3'), 10);
         const threshold = Number.isFinite(parsedThreshold) && parsedThreshold >= 1 ? parsedThreshold : 3;
         const topic = (process.env.ALERT_NTFY_TOPIC || '').trim();
-        if (!alerted && topic && state.consecutiveErrors >= threshold) {
+        const resendKey = (process.env.RESEND_API_KEY || '').trim();
+        const emailTo = (process.env.ALERT_EMAIL_TO || '').trim();
+        const emailFrom = (process.env.ALERT_EMAIL_FROM || '').trim();
+        if (!alerted && state.consecutiveErrors >= threshold && (topic || (resendKey && emailTo && emailFrom))) {
           alerted = true;
-          fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
-            method: 'POST',
-            body: `${state.consecutiveErrors} consecutive poll errors: ${err?.message || String(err)}. Dashboard needs attention.`,
-            headers: { Title: 'Sinka — mail copying is failing', Priority: 'high', Tags: 'warning' },
-            signal: AbortSignal.timeout(10000),
-          }).catch((alertErr) => console.error('[alert] ntfy failed:', alertErr?.message || alertErr));
+          const errText = String(err?.message || String(err)).slice(0, 300);
+          if (topic) {
+            fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
+              method: 'POST',
+              body: `${state.consecutiveErrors} consecutive poll errors: ${errText}. Dashboard needs attention.`,
+              headers: { Title: 'Sinka — mail copying is failing', Priority: 'high', Tags: 'warning' },
+              signal: AbortSignal.timeout(10000),
+            }).catch((alertErr) => console.error('[alert] ntfy failed:', alertErr?.message || alertErr));
+          }
+          if (resendKey && emailTo && emailFrom) {
+            const statusUrl = (process.env.ALERT_STATUS_URL || '').trim();
+            fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                from: emailFrom,
+                to: [emailTo],
+                subject: `Sinka: mail copying failing (${state.consecutiveErrors} failed checks)`,
+                text: `Sinka has failed ${state.consecutiveErrors} mail checks in a row and is backing off.\n\nLast error: ${errText}\n\nCheck the dashboard${statusUrl ? ` or ${statusUrl}` : ''} for the recent-check history.`,
+              }),
+              signal: AbortSignal.timeout(10000),
+            }).then((r) => {
+              if (!r.ok) console.error(`[alert] resend failed: HTTP ${r.status}`);
+            }).catch((alertErr) => console.error('[alert] resend failed:', alertErr?.message || alertErr));
+          }
         }
       } catch (alertErr) {
-        console.error('[alert] ntfy failed:', alertErr?.message || alertErr);
+        console.error('[alert] email/ntfy failed:', alertErr?.message || alertErr);
       }
       recordHistory({ reason, ok: false, error: err?.message || String(err) });
       return state.lastResult;

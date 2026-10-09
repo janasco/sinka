@@ -29,7 +29,9 @@ secrets on the edge. Required: `GMAIL_USER`, `GMAIL_APP_PASSWORD`,
 `DEST_SINKS`, `FORWARD_LIST`. Edge also needs `CLOUDFLARE_ACCOUNT_ID`,
 `D1_DATABASE_ID`, `CLOUDFLARE_API_TOKEN`, `ADMIN_TOKEN`.
 Optional: `ALERT_NTFY_TOPIC` + `ALERT_THRESHOLD` (outage buzz via
-ntfy.sh, empty topic = off), `APPEND_CONCURRENCY` (cap parallel
+ntfy.sh, empty topic = off), `RESEND_API_KEY` + `ALERT_EMAIL_TO` +
+`ALERT_EMAIL_FROM` (outage email via Resend, all three or off),
+`ALERT_STATUS_URL` (link quoted in that email), `APPEND_CONCURRENCY` (cap parallel
 copies, default 3, 0 = all at once), `POLL_BATCH_LIMIT` (max messages
 per poll, default 5), `CATCHUP_LIMIT` (default 25),
 `POLL_INTERVAL_MS` (default 300000 on the edge, 60000 with no
