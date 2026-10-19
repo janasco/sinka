@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sinka — Open-Source Gmailify Alternative for Teams</title>
+<meta name="description" content="Sinka is a free, open-source Gmailify alternative. It fans one Gmail inbox out to many team inboxes with byte-exact IMAP copies — no forwarding, no send caps.">
+<link rel="canonical" href="https://janasco.github.io/sinka/">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sinka — Open-Source Gmailify Alternative for Teams">
+<meta property="og:description" content="One Gmail inbox in, many team inboxes out. Byte-exact IMAP copies, no forwarding, no send caps. Free and open source (MIT).">
+<meta property="og:url" content="https://janasco.github.io/sinka/">
+<meta property="og:image" content="https://janasco.github.io/sinka/assets/preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+:root{color-scheme:dark light;--bg:#0B0F16;--card:#111826;--line:#223047;--ink:#EEF3FA;--mut:#9AA9BE;--acc:#38BDF8;--ok:#34D399}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 1.25rem 3rem}
+.wrap{max-width:46rem;margin:0 auto}a{color:var(--acc)}
+header{padding:3rem 0 1.5rem;border-bottom:1px solid var(--line)}
+h1{font-size:2rem;line-height:1.2;margin:.4rem 0;letter-spacing:-.02em}
+.sub{color:var(--mut);font-size:1.1rem;margin:.5rem 0 1rem}
+.cta{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:1rem}
+.btn{display:inline-block;background:var(--acc);color:#04121F;font-weight:700;border-radius:10px;padding:.6rem 1.1rem;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+main section{padding:1.75rem 0;border-bottom:1px solid var(--line)}
+h2{font-size:1.35rem;margin:0 0 .75rem}h3{font-size:1.05rem;margin:1.25rem 0 .4rem}
+p,li{color:var(--ink)}p.mut,li.mut{color:var(--mut)}.fine{font-size:.85rem;color:var(--mut)}
+code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.05rem .35rem;font-size:.9em}
+table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:.75rem}
+th,td{text-align:left;padding:.5rem .6rem;border-top:1px solid var(--line);vertical-align:top}
+th{border-top:0;color:var(--mut);font-size:.78rem;text-transform:uppercase;letter-spacing:.05em}
+ul{padding-left:1.2rem}li{margin:.3rem 0}
+img.hero{width:100%;border:1px solid var(--line);border-radius:12px;margin-top:1rem}
+footer{padding-top:1.25rem;display:flex;gap:1rem;flex-wrap:wrap;justify-content:space-between}
+</style>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sinka","applicationCategory":"BusinessApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/licenses/MIT","description":"Open-source Gmailify alternative: fans one Gmail inbox out to many team inboxes with byte-exact IMAP copies. No forwarding, no send caps.","url":"https://janasco.github.io/sinka/","author":{"@type":"Organization","name":"janasco"},"sameAs":["https://github.com/janasco/sinka"]}
+</script>
+</head>
+<body>
+<div class="wrap">
+<header>
+<p class="fine">Free · Open source (MIT) · Self-hosted</p>
+<h1>Sinka: the open-source Gmailify alternative that runs the other way</h1>
+<p class="sub">Gmailify pulls many addresses into <em>one</em> Gmail account. Sinka fans <em>one</em> inbox out to <em>many</em> team inboxes — with byte-exact IMAP copies, no forwarding, and no daily send caps.</p>
+<div class="cta">
+<a class="btn" href="https://github.com/janasco/sinka">Get Sinka on GitHub</a>
+<a class="btn ghost" href="#gmailify-vs-sinka">Sinka vs Gmailify</a>
+</div>
+<img class="hero" src="assets/preview.png" alt="Sinka dashboard showing one source inbox fanning out into team inboxes" width="1200" height="630">
+</header>
+<main>
+<section id="why-alternative">
+<h2>Looking for a Gmailify alternative?</h2>
+<p>Gmailify (Gmail's “check mail from other accounts”) collects mail from other addresses into one Gmail inbox. That works until your <em>team</em> needs the mail: everyone shares one login, re-forwarding hits Gmail's daily send caps, and forwarded copies break DKIM/SPF signatures.</p>
+<p>Sinka solves the opposite problem. It reads the one inbox you already use and files an identical copy of every new message into each team member's own inbox over IMAP — the same thing Thunderbird does when you drag a message between accounts. Nothing is ever sent as mail, so there is no send cap, and signatures stay exactly as their sender wrote them. Each person reads their own inbox, with their own replies, history and rules.</p>
+</section>
+<section id="gmailify-vs-sinka">
+<h2>Sinka vs Gmailify</h2>
+<p class="mut">Different job, not strictly better or worse — pick the one that matches how your team reads mail.</p>
+<table>
+<thead><tr><th scope="col"></th><th scope="col">Sinka</th><th scope="col">Gmailify</th></tr></thead>
+<tbody>
+<tr><th scope="row">Which way mail moves</th><td>Fan-out: one inbox to many inboxes</td><td>Fan-in: many addresses to one inbox</td></tr>
+<tr><th scope="row">Who reads the mail</th><td>Each person reads their own inbox</td><td>People share access to the collecting inbox</td></tr>
+<tr><th scope="row">Sending limits</th><td>Never sends, so no send cap</td><td>Re-forwarding can hit Gmail's daily send cap</td></tr>
+<tr><th scope="row">Signatures (DKIM/SPF)</th><td>Stay intact — bytes are copied, not re-sent</td><td>Re-signing can break on forward</td></tr>
+<tr><th scope="row">Setup</th><td>One App Password per inbox, no shared mailbox</td><td>One collecting account everyone trusts</td></tr>
+<tr><th scope="row">Cost / license</th><td>Free, open source (MIT), self-hosted</td><td>Free, built into Gmail</td></tr>
+</tbody>
+</table>
+</section>
+<section id="how-it-works">
+<h2>How Sinka works</h2>
+<ul>
+<li><strong>Checks the source inbox on its own timer</strong> — every 5 minutes, over IMAP, looking for new mail (read or unread).</li>
+<li><strong>Files a copy into every active team inbox.</strong> The bytes are stored as they arrived. The original stays where it is.</li>
+<li><strong>Never duplicates.</strong> Every filed message ID is written down (local file, or a D1 table on Cloudflare's edge), so restarts never copy twice.</li>
+<li><strong>One bad password holds up one inbox, not the others.</strong> A refused copy is retried, then flagged — the rest carry on, and a test copy proves a repaired password works.</li>
+<li><strong>A dashboard and a public status page</strong> show one plain verdict: everything is working, or exactly which inboxes need help.</li>
+</ul>
+</section>
+<section id="get-started">
+<h2>Get started in four commands</h2>
+<ul>
+<li>Turn on IMAP and create one App Password per inbox (source + each team inbox).</li>
+<li><code>git clone https://github.com/janasco/sinka.git &amp;&amp; cd sinka &amp;&amp; npm install</code></li>
+<li>Copy <code>.env.example</code> to <code>.env</code> and fill in the addresses and App Passwords.</li>
+<li><code>npm run poll-once &amp;&amp; npm start</code> — open the dashboard and press <strong>Send a test copy</strong>.</li>
+</ul>
+<p>Run it day and night on Cloudflare's edge (Worker + container + D1) or on any computer with Node 20+. Full runbook in the repo: <a href="https://github.com/janasco/sinka/blob/main/DEPLOY_EDGE.md">DEPLOY_EDGE.md</a>.</p>
+</section>
+<section id="faq">
+<h2>Gmailify alternative FAQ</h2>
+<h3>Is Sinka free?</h3>
+<p>Yes. MIT-licensed open source; the only costs are whatever you already pay for Gmail and, for 24/7 edge hosting, a Cloudflare Workers Paid plan.</p>
+<h3>Does Sinka forward emails?</h3>
+<p>No — and that is the point. Forwarding re-sends mail (send caps, broken signatures). Sinka APPENDs the raw bytes into each inbox over IMAP, so copies arrive as ordinary messages that were never “sent.”</p>
+<h3>Gmailify vs Sinka — which should I choose?</h3>
+<p>Choose Gmailify if one person collects mail from several of their own addresses. Choose Sinka if one inbox (support@, info@, orders@) must reach a whole team, each in their own inbox.</p>
+<h3>Do team members need to share a password?</h3>
+<p>No. Each inbox uses its own App Password, revocable independently. Nobody shares a mailbox login.</p>
+<h3>What happens when a password is revoked?</h3>
+<p>That one inbox is flagged after three refusals while the rest keep copying. Fix the password, press “Send a test copy,” and copying resumes — the dashboard tells you exactly which inbox needs help.</p>
+<h3>Can I see whether Sinka is working?</h3>
+<p>Yes. The dashboard shows a one-line verdict plus per-inbox tiles, and <code>/status</code> is a public, counts-only status page with recent-check history.</p>
+</section>
+</main>
+<footer>
+<p class="fine">Sinka © 2026 janasco · MIT · <a href="https://github.com/janasco/sinka">GitHub</a> · <a href="https://github.com/janasco/sinka/blob/main/README.md">Docs</a></p>
+</footer>
+</div>
+</body>
+</html>
