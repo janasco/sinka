@@ -13,6 +13,8 @@ mailbox password, and everyone reads their mail where they already read it.
 **Sinka is an open-source alternative to Gmailify, running the other way.** Gmailify
 pulls many addresses into *one* Gmail account; Sinka fans *one* inbox out to *many*.
 
+**Website:** <https://janasco.github.io/sinka/> — what Sinka is, Sinka vs Gmailify, setup guide and FAQ.
+
 [![CI](https://github.com/janasco/sinka/actions/workflows/ci.yml/badge.svg)](https://github.com/janasco/sinka/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/janasco/sinka/blob/main/LICENSE)
 [![Node](https://img.shields.io/badge/node-20%2B-5FA04E)](https://nodejs.org)
