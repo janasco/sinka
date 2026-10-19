@@ -21,6 +21,9 @@
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 1.25rem 3rem}
 .wrap{max-width:46rem;margin:0 auto}a{color:var(--acc)}
 .crumb{font-size:.85rem;color:var(--mut);padding:1.25rem 0 0}.crumb a{color:var(--mut)}
+nav.top{display:flex;gap:1.1rem;align-items:center;padding:.9rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
+nav.top a{color:var(--mut);text-decoration:none}nav.top a:hover{color:var(--acc)}
+nav.top .brand{color:var(--ink);font-weight:700;margin-right:auto}
 h1{font-size:1.7rem;line-height:1.25;margin:.5rem 0;letter-spacing:-.01em}
 .sub{color:var(--mut);margin:.4rem 0 1rem}
 img.hero{width:100%;border:1px solid var(--line);border-radius:12px;margin-top:1rem}
@@ -41,6 +44,7 @@ footer{padding-top:1.25rem;font-size:.85rem;color:var(--mut)}
 </head>
 <body>
 <div class="wrap">
+<nav class="top" aria-label="Site"><span class="brand">Sinka</span><a href="https://janasco.github.io/sinka/">Home</a><a href="https://janasco.github.io/sinka/use-cases/">Use cases</a><a href="https://github.com/janasco/sinka">GitHub</a></nav>
 <p class="crumb"><a href="https://janasco.github.io/sinka/">Home</a> / <a href="https://janasco.github.io/sinka/use-cases/">Use cases</a> / Dispatch: the load offer reaches a dispatcher awake</p>
 <header>
 <h1>Dispatch: the load offer reaches a dispatcher awake</h1>

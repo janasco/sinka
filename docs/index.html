@@ -36,6 +36,9 @@ h1{font-size:2rem;line-height:1.2;margin:.4rem 0;letter-spacing:-.02em}
 main section{padding:1.75rem 0;border-bottom:1px solid var(--line)}
 h2{font-size:1.35rem;margin:0 0 .75rem}h3{font-size:1.05rem;margin:1.25rem 0 .4rem}
 p,li{color:var(--ink)}p.mut,li.mut{color:var(--mut)}.fine{font-size:.85rem;color:var(--mut)}
+nav.top{display:flex;gap:1.1rem;align-items:center;padding:.9rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
+nav.top a{color:var(--mut);text-decoration:none}nav.top a:hover{color:var(--acc)}
+nav.top .brand{color:var(--ink);font-weight:700;margin-right:auto}
 code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:.05rem .35rem;font-size:.9em}
 table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:.75rem}
 th,td{text-align:left;padding:.5rem .6rem;border-top:1px solid var(--line);vertical-align:top}
@@ -50,6 +53,7 @@ footer{padding-top:1.25rem;display:flex;gap:1rem;flex-wrap:wrap;justify-content:
 </head>
 <body>
 <div class="wrap">
+<nav class="top" aria-label="Site"><span class="brand">Sinka</span><a href="https://janasco.github.io/sinka/">Home</a><a href="https://janasco.github.io/sinka/use-cases/">Use cases</a><a href="https://github.com/janasco/sinka">GitHub</a></nav>
 <header>
 <p class="fine">Free · Open source (MIT) · Self-hosted</p>
 <h1>Sinka: the open-source Gmailify alternative that runs the other way</h1>
