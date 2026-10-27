@@ -1,0 +1,139 @@
+# Sinka status watchdog — the external eye on the poller.
+#
+# The edge poller can go quiet without failing a poll (process restart,
+# container eviction): no poll runs, so no internal alert ever fires and
+# /status just shows "Starting up" on an empty trail. This workflow polls
+# the PUBLIC history endpoint every 15 minutes and files a GitHub issue
+# while Sinka looks down. Recovery closes the issue automatically.
+#
+# Nothing to configure: the endpoint is public by design (counts only, no
+# inbox addresses). Manual run supported from the Actions tab.
+name: Status watch
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: status-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Check the public status endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate sinka.apexsinc.com/api/history
+        id: check
+        env:
+          STATUS_URL: https://sinka.apexsinc.com/api/history
+        run: |
+          python3 - <<'EOF'
+          import json, os, time, urllib.request, urllib.error
+          url = os.environ['STATUS_URL']
+          now = time.time()
+          verdict = {'healthy': False, 'reason': '', 'detail': {}}
+          try:
+              req = urllib.request.Request(url, headers={'User-Agent': 'sinka-status-watch/1.0'})
+              with urllib.request.urlopen(req, timeout=25) as r:
+                  d = json.load(r)
+          except Exception as e:
+              verdict['reason'] = f'history endpoint unreachable: {type(e).__name__}: {str(e)[:160]}'
+          else:
+              def age(iso):
+                  try:
+                      return now - time.mktime(time.strptime(iso, '%Y-%m-%dT%H:%M:%S.%fZ')) + time.timezone
+                  except Exception:
+                      try:
+                          return now - time.mktime(time.strptime(iso, '%Y-%m-%dT%H:%M:%SZ')) + time.timezone
+                      except Exception:
+                          return None
+              last = d.get('lastPollAt')
+              errs = d.get('consecutiveErrors') or 0
+              started = d.get('startedAt')
+              verdict['detail'] = {'lastPollAt': last, 'consecutiveErrors': errs,
+                                   'seenCount': d.get('seenCount'), 'startedAt': started,
+                                   'backlog': (d.get('lastResult') or {}).get('backlog')}
+              if errs >= 3:
+                  verdict['reason'] = f'{errs} consecutive failed checks (lastPollAt={last})'
+              elif not last:
+                  # Fresh container after a restart: give the boot poll room.
+                  sa = age(started) if started else None
+                  if sa is None or sa > 15 * 60:
+                      verdict['reason'] = f'no finished check yet (startedAt={started})'
+                  else:
+                      verdict = {'healthy': True, 'reason': f'warming up (started {int(sa)}s ago)', 'detail': verdict['detail']}
+              else:
+                  a = age(last)
+                  if a is None:
+                      verdict['reason'] = f'unparseable lastPollAt={last!r}'
+                  elif a > 20 * 60:
+                      verdict['reason'] = f'last finished check {int(a // 60)} min ago ({last})'
+                  else:
+                      verdict = {'healthy': True, 'reason': f'last check {int(a)}s ago, {errs} errors in a row', 'detail': verdict['detail']}
+          print('verdict=' + json.dumps(verdict))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"healthy={str(verdict['healthy']).lower()}\n")
+              f.write(f"reason={verdict['reason']}\n")
+              f.write(f"detail={json.dumps(verdict['detail'])}\n")
+          EOF
+
+      - name: File or close the outage issue
+        uses: actions/github-script@v7
+        env:
+          HEALTHY: ${{ steps.check.outputs.healthy }}
+          REASON: ${{ steps.check.outputs.reason }}
+          DETAIL: ${{ steps.check.outputs.detail }}
+        with:
+          script: |
+            const TITLE = 'Sinka poller looks down (status watch)';
+            const { data: open } = await github.rest.issues.listForRepo({
+              ...context.repo, state: 'open', per_page: 50,
+            });
+            const hit = open.find((i) => i.title === TITLE);
+            if (process.env.HEALTHY === 'true') {
+              if (hit) {
+                await github.rest.issues.createComment({
+                  ...context.repo, issue_number: hit.number,
+                  body: `Recovered: ${process.env.REASON}\n\n\`\`\`\n${process.env.DETAIL}\n\`\`\`\nClosing automatically.`,
+                });
+                await github.rest.issues.update({
+                  ...context.repo, issue_number: hit.number, state: 'closed',
+                });
+                core.info(`closed #${hit.number}`);
+              } else {
+                core.info('healthy, no open issue. Nothing to do.');
+              }
+              return;
+            }
+            const body = [
+              'The scheduled status check found Sinka not copying mail.',
+              '',
+              `**${process.env.REASON}**`,
+              '',
+              '```',
+              process.env.DETAIL,
+              '```',
+              '',
+              'Runbook: check `GET https://sinka.apexsinc.com/api/history` ' +
+              '(lastPollAt, consecutiveErrors), then `npx wrangler containers list` ' +
+              'and recent `npx wrangler tail sinka` output. This issue closes itself on recovery.',
+            ].join('\n');
+            if (hit) {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: hit.number, body: `Still down: ${process.env.REASON}`,
+              });
+              core.info(`still down, noted on #${hit.number}`);
+            } else {
+              const { data: created } = await github.rest.issues.create({
+                ...context.repo, title: TITLE, body,
+                labels: ['outage'],
+              });
+              core.info(`filed #${created.number}`);
+            }
