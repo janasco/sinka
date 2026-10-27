@@ -1,5 +1,6 @@
-node_modules/
-.env
-data/seen.json
 *.log
+.env
 backups/
+data/history.json
+data/seen.json
+node_modules/
