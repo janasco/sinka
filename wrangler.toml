@@ -14,8 +14,14 @@ workers_dev = false
 
 [[containers]]
 class_name = "ReplicatorContainer"
-image = "./Dockerfile"
-max_instances = 1
+# durable_object policy (required by this account since 2026-10-27; the
+# default policy can no longer create applications here). The image is
+# named so worker.js can select it in ctx.container.start(); instances
+# start on first request and run until the app is recreated.
+scheduling_policy = "durable_object"
+
+[containers.images.replicator]
+dockerfile = "./Dockerfile"
 
 [[durable_objects.bindings]]
 class_name = "ReplicatorContainer"
