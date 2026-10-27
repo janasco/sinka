@@ -95,20 +95,20 @@ not that replication is healthy — check `/api/status` afterwards. To roll
 back, redeploy the previous Worker version; the container picks it up on
 the next recreate.
 
-## 4. Route + Access cutover
+## 4. Route + sign-in
 
-```bash
-npx wrangler route add sinka.example.com/* sinka
-```
-
-- Keep a Zero Trust Access app on your hostname
-  (Email OTP, e.g. `you@example.com` only).
-- Path bypasses (public, no login): only `GET /api/history` has one
-  (Access app on `sinka.example.com/api/history`, Bypass everyone).
-  Everything else — including `/` (status page) and `/status` (dashboard)
-  — goes through the OTP login. A root-path (`/`) bypass app does NOT match
-  the bare root (tried 2026-10-27), so do not rely on one; monitors and the
-  public use the history endpoint instead.
+- `GET /` is the public status page (counts only, no sign-in).
+- `GET /status` is the private dashboard, gated by `ADMIN_TOKEN` alone:
+  no token (header or cookie) means a sign-in screen with no inbox
+  addresses. Sign in once per device (cookie, 30 days); forget it from
+  the dashboard's step 1 or `POST /status/logout`.
+- `GET /api/history` is public (powers the status page and monitors).
+- Everything under `/api/*` needs the token (Bearer header or cookie).
+- Do NOT put a Cloudflare Access OTP app on this hostname: it would
+  challenge the public status page too, and Access path rules cannot
+  exempt the bare `/` (tried 2026-10-27). Keep the one path bypass —
+  Access app on `sinka.example.com/api/history`, Bypass everyone —
+  so monitors never need a login.
 - Test incognito: OTP → dashboard → `/api/status`
   (`sinksConfigured: N`, `seenCount`, `pendingSinks`).
   With `ADMIN_TOKEN` set, paste it into the "Things you can do" token

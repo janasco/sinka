@@ -120,7 +120,7 @@ fronts your subdomain, one container does the copying, and a D1 table remembers 
 has already been filed.
 
 - `npx wrangler deploy` builds it; then point a route (say `sinka.example.com/*`) at the `sinka` worker.
-- A Cloudflare Access app with email one-time codes goes in front of that address, so only the people you list get in.
+- `GET /` is the public status page; `GET /status` is the private dashboard, gated by `ADMIN_TOKEN` alone (no Access app — it cannot exempt the bare `/`).
 - A cron trigger wakes the poller every 5 minutes, so mail is checked even when nobody visits the page.
 
 **Containers need the Workers Paid plan** — the free plan cannot run them. The full
@@ -138,7 +138,7 @@ Everything lives in `.env` (see [`.env.example`](.env.example)) or, on the edge,
 | `FORWARD_LIST` | The team addresses the dashboard shows, joined by `,`. One listed here with no `DEST_SINKS` entry shows as needing you. | empty |
 | `POLL_INTERVAL_MS` | How often to check for new mail, in milliseconds. | `300000` in `.env.example` and on the edge, `60000` if unset |
 | `LOOKBACK_HOURS` | On the first run, only copy mail newer than this, so an old pile is not blasted out. | `24` |
-| `ADMIN_TOKEN` | A private token that unlocks the buttons and `/api/*`. Empty means rely on Access alone. | empty |
+| `ADMIN_TOKEN` | A private token that gates the dashboard HTML and unlocks the buttons and `/api/*` (Bearer header or cookie). Empty means the dashboard is public. | empty |
 | `DRY_RUN` | `1` turns on practice mode: the page says so and nothing is copied. | `0` |
 | `DATA_DIR` | Folder holding `data/seen.json` and `data/failures.log`. | `./data` |
 | `ALERT_NTFY_TOPIC` | An ntfy.sh topic for one outage alert. Empty means no alerts. | empty |
@@ -206,7 +206,7 @@ numbers, and the recent checks newest-first, so an outage can be traced back.
 - **Never run two pollers against one source inbox.** Two copies, twice over. Stop your local copy before starting the edge copy.
 - **`.env` is never committed.** `.gitignore` covers it, along with `data/seen.json` and log files. Keep it that way.
 - **One App Password per inbox means you can revoke one** without touching the others.
-- **Keep the dashboard private.** Put Cloudflare Access in front of it, set `ADMIN_TOKEN`, or both — and do not expose the port to the internet.
+- **Set a strong `ADMIN_TOKEN` — it is the only gate.** The dashboard HTML renders no inbox address without it (cookie session or Bearer header); without a token configured, the dashboard is public.
 - **Test before you trust it.** `DRY_RUN=1` for practice mode, or **Send a test copy** to prove a repaired password works.
 
 ## Contributing

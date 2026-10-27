@@ -35,10 +35,10 @@ ntfy.sh, empty topic = off), `RESEND_API_KEY` + `ALERT_EMAIL_TO` +
 copies, default 3, 0 = all at once), `POLL_BATCH_LIMIT` (max messages
 per poll, default 5), `CATCHUP_LIMIT` (default 25),
 `POLL_INTERVAL_MS` (default 300000 on the edge, 60000 with no
-`.env` value), `ADMIN_TOKEN` (empty = rely on Cloudflare Access alone).
+`.env` value), `ADMIN_TOKEN` (empty = dashboard is public — always set one).
 
-The container only receives the settings listed in the `envVars`
-allow-list in `worker.js`. A key set as a Worker secret but missing
+The container only receives the settings listed in `containerEnv()` in
+`worker.js` (passed to `ctx.container.start()`). A key set as a Worker secret but missing
 from that list never reaches the poller, so add it there in the same
 PR.
 
