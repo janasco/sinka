@@ -18,6 +18,7 @@ class_name = "ReplicatorContainer"
 # default policy can no longer create applications here). The image is
 # named so worker.js can select it in ctx.container.start(); instances
 # start on first request and run until the app is recreated.
+# See DEPLOY_EDGE.md ("Container scheduling policy") before touching this.
 scheduling_policy = "durable_object"
 
 [containers.images.replicator]

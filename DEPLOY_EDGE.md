@@ -46,6 +46,14 @@ that list in the same change.
 
 ## 3. Deploy
 
+> Container scheduling policy (2026-10-27): this account cannot create
+> applications with the `default` policy, so `wrangler.toml` pins
+> `scheduling_policy = "durable_object"` with a named image
+> (`[containers.images.replicator]`), and `worker.js` starts the instance
+> explicitly in `ReplicatorContainer.fetch()` via `ctx.container.start()`.
+> Do not switch back to `default` without confirming creation works again
+> (`npm run redeploy -- --dry-run` only resolves; a real recreate proves it).
+
 Option A — Workers Builds (recommended, no Docker):
 
 1. Dashboard → Workers & Pages → Create → Connect Git →
@@ -95,6 +103,12 @@ npx wrangler route add sinka.example.com/* sinka
 
 - Keep a Zero Trust Access app on your hostname
   (Email OTP, e.g. `you@example.com` only).
+- Path bypasses (public, no login): only `GET /api/history` has one
+  (Access app on `sinka.example.com/api/history`, Bypass everyone).
+  Everything else — including `/` (status page) and `/status` (dashboard)
+  — goes through the OTP login. A root-path (`/`) bypass app does NOT match
+  the bare root (tried 2026-10-27), so do not rely on one; monitors and the
+  public use the history endpoint instead.
 - Test incognito: OTP → dashboard → `/api/status`
   (`sinksConfigured: N`, `seenCount`, `pendingSinks`).
   With `ADMIN_TOKEN` set, paste it into the "Things you can do" token
