@@ -91,8 +91,11 @@ exactly one. It stops the poller for ~1-2 min, then waits up to 3 min for
 the new container to report `running`. Preview it first with
 `npm run redeploy -- --dry-run` (changes nothing) and pass `--yes` to skip
 the confirmation. It only proves the process is up and the port answers,
-not that replication is healthy — check `/api/status` afterwards. To roll
-back, redeploy the previous Worker version; the container picks it up on
+not that replication is healthy — check `/api/status` afterwards.
+After every recreate, confirm the instance is actually new:
+`GET /api/history` → `startedAt` must be newer than the deploy
+(a stale instance can otherwise keep serving the previous image).
+To roll back, redeploy the previous Worker version; the container picks it up on
 the next recreate.
 
 ## 4. Route + sign-in
