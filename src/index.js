@@ -370,7 +370,7 @@ function escHtml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-app.get('/', (_req, res) => {
+app.get('/status', (_req, res) => {
   const sinkUsers = new Set(cfg.sinks.filter((s) => s.enabled !== false).map((s) => s.user));
   const disUsers = new Set(cfg.sinks.filter((s) => s.enabled === false).map((s) => s.user));
   const autoUsers = new Set(getAutoDisabled());
@@ -919,7 +919,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
         <p>Copying uses IMAP <code>APPEND</code> into each team inbox. There is no sending path. If this page is not behind Cloudflare Access (email one-time code), do not expose the port publicly.</p>
         <p>The countdown at the top is this page's own redraw timer, nothing more. The real interval between mail checks is <code>POLL_INTERVAL_MS</code>, shown as &ldquo;Checks every&rdquo;.</p>
         <p>Machine-readable status: <code>GET /api/status</code> &middot; <code>POST /api/poll-now</code> &middot; <code>POST /api/baseline</code> &middot; <code>POST /api/test-forward</code> &middot; <code>GET /healthz</code></p>
-        <p>Public status page, no sign-in and no inbox addresses: <code>GET /status</code> &middot; <code>GET /api/history</code>. It keeps the last 200 checks, so an outage can be traced back.</p>
+        <p>Public status page, no sign-in and no inbox addresses: <code>GET /</code> &middot; <code>GET /api/history</code>. It keeps the last 30 days of checks, so an outage can be traced back.</p>
       </div>
     </details>
   </div>
@@ -1504,9 +1504,10 @@ app.get('/api/history', (_req, res) => {
   });
 });
 
-// Public status page: is the platform down, and what happened before?
-// Counts only, no inbox addresses, auto-refreshes from /api/history.
-app.get('/status', (_req, res) => {
+// Public status page (now the front page): is the platform down, and what
+// happened before? Counts only, no inbox addresses, auto-refreshes from
+// /api/history. The private dashboard lives at /status (Access + token).
+app.get('/', (_req, res) => {
   res.send(`<!doctype html>
 <html lang="en">
 <head>
@@ -1583,8 +1584,8 @@ footer{margin-top:1.4rem;padding-top:1.1rem;border-top:1px solid var(--line);dis
 </section>
 </main>
 <footer>
-<p class="fine">Counts only, no inbox addresses. Full detail is on the private dashboard at <code>/</code>. Machine-readable: <code>GET /api/history</code> and <code>GET /healthz</code>.</p>
-<p class="fine"><a href="/">Back to the dashboard</a></p>
+<p class="fine">Counts only, no inbox addresses. Full detail is on the private dashboard at <code>/status</code> (sign-in required). Machine-readable: <code>GET /api/history</code> and <code>GET /healthz</code>.</p>
+<p class="fine"><a href="/status">Back to the dashboard</a> (sign-in required)</p>
 </footer>
 </div>
 <script>

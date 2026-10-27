@@ -41,10 +41,10 @@ const REPO = path.resolve(fileURLToPath(new URL('../', import.meta.url)));
 const SRC_PATH = path.join(REPO, 'src/index.js');
 const SRC = fs.readFileSync(SRC_PATH, 'utf8');
 
-/** Source text of the whole `app.get('/', …)` route, template literal included. */
-const ROUTE_START = SRC.indexOf("app.get('/'");
+/** Source text of the whole dashboard `app.get('/status', …)` route, template literal included. */
+const ROUTE_START = SRC.indexOf("app.get('/status'");
 const ROUTE_END = SRC.indexOf('`);', SRC.indexOf('</html>', ROUTE_START));
-assert.ok(ROUTE_START > 0 && ROUTE_END > ROUTE_START, 'could not locate the app.get(\'/\') route');
+assert.ok(ROUTE_START > 0 && ROUTE_END > ROUTE_START, 'could not locate the dashboard route');
 const REGION = SRC.slice(ROUTE_START, ROUTE_END);
 
 const STYLE_OPEN = REGION.indexOf('<style>');
@@ -288,9 +288,14 @@ before(async () => {
     if (r.error) { failures.push(r.error); continue; }
     child = r.proc;
     tmpDir = r.dir;
-    const res = await fetchLocal(`http://127.0.0.1:${port}/`);
-    assert.equal(res.status, 200, 'GET / must answer 200');
+    const res = await fetchLocal(`http://127.0.0.1:${port}/status`);
+    assert.equal(res.status, 200, 'GET /status (dashboard) must answer 200');
     servedHtml = await res.text();
+    const pub = await fetchLocal(`http://127.0.0.1:${port}/`);
+    assert.equal(pub.status, 200, 'GET / (public status page) must answer 200');
+    const pubHtml = await pub.text();
+    assert.match(pubHtml, /Sinka status/, 'the front page must be the public status page');
+    assert.doesNotMatch(pubHtml, /btn-poll/, 'the public front page must not carry the dashboard controls');
     return;
   }
   assert.fail(`could not boot sinka on any of ${CANDIDATE_PORTS.join(', ')}.\n${failures.join('\n')}`);
