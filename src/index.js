@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createStoreAuto } from './store_d1.js';
-import { loadConfig, parseSinks, listWindowMessages, fetchBodiesByUids, replicateMessage, replicatePending, getPending, appendTestMessage, getAutoDisabled } from './mail.js';
+import { loadConfig, parseSinks, listWindowMessages, fetchBodiesByUids, selectBatch, replicateMessage, replicatePending, getPending, appendTestMessage, getAutoDisabled } from './mail.js';
 
 const args = new Set(process.argv.slice(2));
 const runOnce = args.has('--once');
@@ -204,13 +204,14 @@ async function poll(reason = 'timer') {
       recordHistory({ reason, ok: true, ms: state.lastResult.ms, fetched: windowList.length, replicated: 0, skipped: 0, baselined: windowList.length });
       return state.lastResult;
     }
-    // Bodies only for the oldest few not-yet-filed messages.
-    const batch = fresh.slice(0, POLL_BATCH_LIMIT);
+    // Bodies only for the oldest not-yet-filed messages that fit the budget.
+    const batch = selectBatch(fresh, POLL_BATCH_LIMIT, POLL_BATCH_BYTES);
+    const batchBytes = batch.reduce((s, m) => s + (Number(m.size) || 0), 0);
     const messages = batch.length
       ? await withTimeout(fetchBodiesByUids(cfg, batch.map((m) => m.uid)), IMAP_BUDGET_MS, 'fetchBodiesByUids')
       : [];
     if (fresh.length > messages.length) {
-      console.log(`[poll] backlog: ${fresh.length} unfiled, pulling ${messages.length} oldest this poll (batch limit ${POLL_BATCH_LIMIT})`);
+      console.log(`[poll] backlog: ${fresh.length} unfiled, pulling ${messages.length} oldest this poll (${(batchBytes / 1024).toFixed(0)}KB, limits ${POLL_BATCH_LIMIT} msgs / ${(POLL_BATCH_BYTES / 1048576).toFixed(0)}MB)`);
     }
     let replicated = 0;
     let skipped = 0;

@@ -44,6 +44,8 @@ DATA_DIR = "./data"
 DRY_RUN = "0"
 # Backlog drains oldest-first, a few messages per poll (never all bodies at once).
 POLL_BATCH_LIMIT = "5"
+# Same, by bytes: small mail drains around one giant attachment.
+POLL_BATCH_BYTES = "8388608"
 # Max parallel IMAP APPENDs per fan-out (0 = unlimited).
 APPEND_CONCURRENCY = "3"
 # Days of poll history kept for /status (older entries are pruned).

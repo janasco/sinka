@@ -40,6 +40,8 @@ export class ReplicatorContainer extends Container {
       APPEND_CONCURRENCY: env.APPEND_CONCURRENCY ?? '3',
       // Max messages pulled per poll; the backlog drains oldest-first.
       POLL_BATCH_LIMIT: env.POLL_BATCH_LIMIT ?? '5',
+      // Max bytes pulled per poll; small mail drains around one giant mail.
+      POLL_BATCH_BYTES: env.POLL_BATCH_BYTES ?? '8388608',
       // Outage email via Resend (all three required, else disabled).
       RESEND_API_KEY: env.RESEND_API_KEY ?? '',
       ALERT_EMAIL_TO: env.ALERT_EMAIL_TO ?? '',

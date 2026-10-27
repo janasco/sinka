@@ -149,6 +149,7 @@ Everything lives in `.env` (see [`.env.example`](.env.example)) or, on the edge,
 | `ALERT_STATUS_URL` | Optional status link quoted in the outage email. | empty |
 | `APPEND_CONCURRENCY` | Copy into at most this many inboxes at once, to be gentler on Gmail and small containers. `0` means all at once. | `3` |
 | `POLL_BATCH_LIMIT` | Max messages pulled per poll; a backlog drains oldest-first over successive polls instead of all bodies at once. | `5` |
+| `POLL_BATCH_BYTES` | Max bytes pulled per poll; small mail drains around one giant attachment instead of queuing behind it. | `8388608` (8MB) |
 | `RETENTION_DAYS` | Days of poll history kept for `/status`; older entries are pruned. | `30` |
 | `CATCHUP_LIMIT` | On the first run, if the source holds more unfiled mail than this, Sinka remembers it all and copies none of it. | `25` |
 | `PORT` | The local port the dashboard listens on. | `8788` |

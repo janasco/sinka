@@ -279,11 +279,13 @@ export function parseSinks(raw) {
     .filter(Boolean);
 }
 
-// Envelope-only list of EVERY message in the lookback window, read or
+// Envelope + size list of EVERY message in the lookback window, read or
 // unread. Cheap: no bodies, no flags touched. Whether mail was opened in
 // the source inbox must never decide whether the team gets a copy — the
 // dedupe store (D1/file), not the Seen flag, is what remembers what was
-// already filed. Returned oldest-first (UID ascending).
+// already filed. Returned oldest-first (UID ascending). Sizes come from
+// BODYSTRUCTURE so the poller can cap each batch by bytes, not just count:
+// one 20MB attachment must not hold a hundred small mails hostage.
 export async function listWindowMessages(cfg) {
   const client = new ImapFlow({
     host: 'imap.gmail.com',
@@ -304,6 +306,7 @@ export async function listWindowMessages(cfg) {
     for await (const msg of client.fetch({ since }, {
       envelope: true,
       headers: true,
+      bodyStructure: true,
     })) {
       const headers = msg.headers; // Map-like from imapflow
       const get = (n) => {
@@ -315,6 +318,12 @@ export async function listWindowMessages(cfg) {
           return '';
         }
       };
+      const walkSize = (part) => {
+        if (!part || typeof part !== 'object') return 0;
+        let s = Number(part.size || 0);
+        for (const sub of part.childNodes || []) s += walkSize(sub);
+        return Number.isFinite(s) ? s : 0;
+      };
       out.push({
         uid: msg.uid,
         messageId: get('message-id') || `uid-${msg.uid}`,
@@ -322,6 +331,7 @@ export async function listWindowMessages(cfg) {
         to: get('to'),
         subject: get('subject'),
         date: get('date'),
+        size: walkSize(msg.bodyStructure),
       });
     }
     out.sort((a, b) => a.uid - b.uid);
@@ -331,6 +341,33 @@ export async function listWindowMessages(cfg) {
       await client.logout();
     } catch { /* ignore */ }
   }
+}
+
+// Pick the oldest messages that fit this poll: at most countLimit of them
+// and at most byteLimit bytes between them — except the oldest one always
+// goes, even over budget, so a single giant mail can delay but never stall
+// the queue. Later (smaller) messages fill around an over-budget one
+// instead of queuing behind it. Pure: unit-tested, no I/O.
+export function selectBatch(fresh, countLimit, byteLimit) {
+  const n = Math.max(1, Math.floor(Number(countLimit)) || 1);
+  const cap = Number(byteLimit);
+  const bytes = Number.isFinite(cap) && cap > 0 ? cap : Infinity;
+  const out = [];
+  let total = 0;
+  for (const m of fresh || []) {
+    if (typeof m !== 'object' || !m) continue;
+    if (out.length === 0) {
+      out.push(m);
+      total += Number(m.size) || 0;
+      continue;
+    }
+    if (out.length >= n) break;
+    const s = Number(m.size) || 0;
+    if (total + s > bytes) continue;
+    out.push(m);
+    total += s;
+  }
+  return out;
 }
 
 // Bodies for explicit UIDs (from listWindowMessages). One IMAP session,
