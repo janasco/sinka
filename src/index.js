@@ -180,6 +180,10 @@ async function poll(reason = 'timer') {
     // of downloading every body at once and dying mid-fan-out (which
     // remembers nothing and re-downloads everything next time).
     const POLL_BATCH_LIMIT = Math.max(1, Number.parseInt(process.env.POLL_BATCH_LIMIT || '5', 10) || 5);
+    // Same cap by bytes (default 8MB): small mail drains around one giant
+    // attachment instead of queuing behind it. parseInt-free on purpose —
+    // a missing or garbage value means "no byte cap", never zero.
+    const POLL_BATCH_BYTES = Number(process.env.POLL_BATCH_BYTES || 8 * 1024 * 1024);
     // Cheap envelope-only list first (read or unread — opening mail in the
     // source inbox must never decide whether the team gets a copy).
     // Bodies are downloaded only for the few messages actually handled below.
