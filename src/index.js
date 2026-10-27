@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createStoreAuto } from './store_d1.js';
@@ -351,16 +352,48 @@ async function poll(reason = 'timer') {
   }
 }
 
-// ---- Minimal private UI (Cloudflare Access Email OTP sits in front) ----
+// ---- Private dashboard (token-gated HTML) + public status page ----
 const app = express();
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json());
 
+function safeEq(a, b) {
+  const x = Buffer.from(String(a || ''));
+  const y = Buffer.from(String(b || ''));
+  return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
+}
+
+function parseCookies(header) {
+  const out = {};
+  for (const part of String(header || '').split(';')) {
+    const i = part.indexOf('=');
+    if (i < 0) continue;
+    out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return out;
+}
+
+const ADMIN_COOKIE = 'sinka_admin';
+
+// The dashboard gate: with no ADMIN_TOKEN configured the dashboard is open
+// (legacy behaviour). Otherwise a request must carry the token — as a
+// Bearer header (API + in-page token box) or as the login cookie — before
+// ANY inbox address is rendered. The public / status page never needs this.
+function isAuthed(req) {
+  if (!cfg.adminToken) return true;
+  const header = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  if (header && safeEq(header, cfg.adminToken)) return true;
+  try {
+    const raw = parseCookies(req.headers.cookie)[ADMIN_COOKIE];
+    const cookie = raw ? decodeURIComponent(raw) : '';
+    if (cookie && safeEq(cookie, cfg.adminToken)) return true;
+  } catch { /* malformed cookie: unauthenticated */ }
+  return false;
+}
+
 function requireAdmin(req, res, next) {
-  if (!cfg.adminToken) return next(); // rely on Cloudflare Access
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  if (token === cfg.adminToken) return next();
+  if (isAuthed(req)) return next();
   return res.status(401).json({ success: false, error: 'Unauthorized' });
 }
 
@@ -371,6 +404,9 @@ function escHtml(s) {
 }
 
 app.get('/status', (_req, res) => {
+  // Token gate first: without it, not a single inbox address may render.
+  // (With no ADMIN_TOKEN configured the gate stays open, as before.)
+  if (!isAuthed(_req)) return res.send(gatePage());
   const sinkUsers = new Set(cfg.sinks.filter((s) => s.enabled !== false).map((s) => s.user));
   const disUsers = new Set(cfg.sinks.filter((s) => s.enabled === false).map((s) => s.user));
   const autoUsers = new Set(getAutoDisabled());
@@ -812,7 +848,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
     <div class="actlist">
     <div class="act">
       <h3><span class="step-n" aria-hidden="true">1</span>Sign in, if you were given a private token</h3>
-      <p>Some installs sit behind an extra sign-in. Paste the private token for this dashboard and the buttons below start working. It is kept in this tab only, never written to disk.</p>
+      <p>Paste the private token for this dashboard and the buttons below start working. It is kept in this tab only, never written to disk. Signed in through the gate page instead? You are already signed in on this device — the buttons work. <button type="button" class="ghost" id="btn-forget">Forget this device</button></p>
       <div class="field">
         <label for="inp-token">Private token for this dashboard</label>
         <input type="password" id="inp-token" autocomplete="off" spellcheck="false" placeholder="Paste your private token">
@@ -916,7 +952,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <summary>Details for whoever runs this</summary>
       <div class="dev">
         <p>Sinka reads one inbox and files copies into each inbox listed in the server settings (<code>DEST_SINKS</code>, <code>FORWARD_LIST</code>). Entries prefixed with <code>-</code> are kept but paused. A shared <code>ADMIN_TOKEN</code> gates this page behind a private token that the browser holds in memory only.</p>
-        <p>Copying uses IMAP <code>APPEND</code> into each team inbox. There is no sending path. If this page is not behind Cloudflare Access (email one-time code), do not expose the port publicly.</p>
+        <p>Copying uses IMAP <code>APPEND</code> into each team inbox. There is no sending path. This page is gated by <code>ADMIN_TOKEN</code> alone: set a strong token and never share this address. With no token configured, this page is public.</p>
         <p>The countdown at the top is this page's own redraw timer, nothing more. The real interval between mail checks is <code>POLL_INTERVAL_MS</code>, shown as &ldquo;Checks every&rdquo;.</p>
         <p>Machine-readable status: <code>GET /api/status</code> &middot; <code>POST /api/poll-now</code> &middot; <code>POST /api/baseline</code> &middot; <code>POST /api/test-forward</code> &middot; <code>GET /healthz</code></p>
         <p>Public status page, no sign-in and no inbox addresses: <code>GET /</code> &middot; <code>GET /api/history</code>. It keeps the last 30 days of checks, so an outage can be traced back.</p>
@@ -945,7 +981,7 @@ var lastAlertHtml=''; // so the alerts are only announced when they really chang
 var countdown=REFRESH_SECS;
 var hiddenSince=0;
 var backTimer=null;
-var BUTTONS=['btn-poll','btn-base','btn-test','btn-refresh','btn-test-fix','btn-poll-fix'];
+var BUTTONS=['btn-poll','btn-base','btn-test','btn-refresh','btn-test-fix','btn-poll-fix','btn-forget'];
 var DASH='—';
 /* Everything here is a network payload, so a missing, null or wrongly-typed field
    is a fact about the answer and never a reason for this page to invent one. */
@@ -1430,6 +1466,9 @@ var btnBase=el('btn-base');
 if(btnBase)btnBase.onclick=function(){if(!confirm('Skip the backlog? This remembers everything currently in the source inbox and copies none of it. It cannot be undone.'))return;
  runAction(btnBase,'Skipping\u2026','base',function(){return api('/api/baseline',{method:'POST',body:{}});},true);};
 var inpToken=el('inp-token');if(inpToken)inpToken.oninput=function(e){token=e.target.value.trim();};
+var btnForget=el('btn-forget');
+if(btnForget)btnForget.onclick=function(){setBusy(true,btnForget,'Forgetting…');
+ fetch('/status/logout',{method:'POST'}).finally(function(){setBusy(false,btnForget);try{location.reload();}catch(e){}});};
 var inpTo=el('inp-to');if(inpTo)inpTo.oninput=function(){setText('fix-to',testTargetLine());};
 function tick(){
  paintRail();
@@ -1450,6 +1489,83 @@ refresh();setInterval(tick,1000);
 </script>
 </body>
 </html>`);
+});
+
+// Sign-in gate for the private dashboard: renders no inbox address at all.
+// A correct token sets an HttpOnly cookie (30 days); wrong tokens get nothing.
+function gatePage() {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Sinka private dashboard sign-in.">
+<title>Sinka &middot; private dashboard</title>
+<style>
+:root{color-scheme:dark;--bg:#05070B;--card:#0E121A;--line:#1A2333;--line-2:#273349;--field:#212C42;--field-line:#5A6B8C;--ink:#F1F5F9;--mut:#8A99AE;--acc:#38BDF8;--btn-bg:#38BDF8;--btn-fg:#04121F;--pad:1.25rem;--r:14px;--fs-s:.875rem;--fs-m:.9375rem}
+@media (prefers-color-scheme:light){:root{color-scheme:light;--bg:#F5F7FA;--card:#FFFFFF;--line:#E1E7EF;--ink:#0F172A;--mut:#5A6B80;--field:#FFFFFF;--field-line:#6B7A93;--acc:#0369A1;--btn-bg:#0369A1;--btn-fg:#FFFFFF}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 var(--fs-m)/1.55 system-ui,sans-serif;padding:0 1.25rem 3rem}
+.wrap{max-width:34rem;margin:0 auto}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+a{color:var(--acc)}:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:var(--pad);margin-top:3rem}
+h1{font-size:1.25rem;margin:0 0 .4rem}p{color:var(--mut);font-size:var(--fs-s);margin:.4rem 0}
+p.err{color:#F87171;display:none}
+label{display:block;font-size:var(--fs-s);color:var(--mut);margin:.8rem 0 .3rem}
+input{font:inherit;color:var(--ink);background:var(--field);border:1px solid var(--field-line);border-radius:9px;padding:.55rem .7rem;width:100%;min-height:44px}
+button{font:inherit;background:var(--btn-bg);color:var(--btn-fg);border:1px solid transparent;border-radius:9px;padding:.55rem 1rem;font-size:var(--fs-s);font-weight:600;cursor:pointer;min-height:44px;margin-top:.8rem;width:100%}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<main class="card" aria-labelledby="g-h">
+<h1 id="g-h">Private dashboard</h1>
+<p>This page shows inbox addresses and mail counts. Paste the private token to see them. The public <a href="/">status page</a> needs no sign-in.</p>
+<form id="g-form">
+<label for="g-token">Private token for this dashboard</label>
+<input type="password" id="g-token" autocomplete="off" spellcheck="false" placeholder="Paste your private token">
+<p class="err" id="g-err" role="alert">That token was not accepted. Try again.</p>
+<button type="submit" id="g-btn">Sign in</button>
+</form>
+<p>Stays signed in on this device for 30 days. Forget it any time from the dashboard.</p>
+</main>
+</div>
+<script>
+var form=document.getElementById('g-form');
+if(form)form.onsubmit=function(e){
+ if(e&&e.preventDefault)e.preventDefault();
+ var n=document.getElementById('g-token'),err=document.getElementById('g-err'),btn=document.getElementById('g-btn');
+ var t=n?(String(n.value==null?'':n.value).trim()):'';
+ if(btn)btn.disabled=true;
+ fetch('/status/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})})
+ .then(function(r){return r.json().then(function(j){return{ok:r.ok,body:j};});})
+ .then(function(o){
+  if(o.ok&&o.body&&o.body.success){try{location.reload();}catch(e){}}
+  else{if(err)err.style.display='block';if(btn)btn.disabled=false;}});
+ return false;};
+</script>
+</body>
+</html>`;
+}
+
+app.post('/status/login', (req, res) => {
+  const token = String(req.body?.token || '').trim().slice(0, 500);
+  if (!cfg.adminToken || !token || !safeEq(token, cfg.adminToken)) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+  res.cookie(ADMIN_COOKIE, encodeURIComponent(cfg.adminToken), {
+    httpOnly: true, sameSite: 'lax', path: '/', maxAge: 30 * 24 * 3600 * 1000,
+  });
+  res.json({ success: true });
+});
+
+app.post('/status/logout', (_req, res) => {
+  res.clearCookie(ADMIN_COOKIE, { path: '/' });
+  res.json({ success: true });
 });
 
 app.get('/api/status', requireAdmin, (_req, res) => {
@@ -1702,6 +1818,9 @@ if (runOnce) {
 } else {
   app.listen(cfg.port, () => {
     console.log(`Sinka listening on :${cfg.port} (hostname sinka.example.com -> localhost:${cfg.port})`);
+    if (!cfg.adminToken) {
+      console.error('[security] ADMIN_TOKEN is empty: the /status dashboard (inbox addresses included) is PUBLIC. Set ADMIN_TOKEN to gate it.');
+    }
   });
   // Initial poll shortly after boot, then on interval. Overlaps are skipped
   // by awaiting; a slow poll simply delays the next tick.
