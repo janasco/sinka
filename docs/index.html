@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{var t=localStorage.getItem('sinka-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <title>Sinka — Open-Source Gmailify Alternative for Teams</title>
 <meta name="description" content="Sinka is a free, open-source Gmailify alternative. It fans one Gmail inbox out to many team inboxes with byte-exact IMAP copies — no forwarding, no send caps.">
 <link rel="canonical" href="https://janasco.github.io/sinka/">
@@ -25,6 +26,9 @@
 <meta name="twitter:image" content="https://janasco.github.io/sinka/assets/preview.png">
 <style>
 :root{color-scheme:dark light;--bg:#0B0F16;--card:#111826;--line:#223047;--ink:#EEF3FA;--mut:#9AA9BE;--acc:#38BDF8;--ok:#34D399}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0B0F16;--card:#111826;--line:#223047;--ink:#EEF3FA;--mut:#9AA9BE;--acc:#38BDF8;--ok:#34D399}
+:root[data-theme="light"]{color-scheme:light;--bg:#F5F7FA;--card:#FFFFFF;--line:#E1E7EF;--ink:#0F172A;--mut:#5A6B80;--acc:#0369A1;--ok:#15803D}
+@media (prefers-color-scheme:light){:root:not([data-theme]){color-scheme:light;--bg:#F5F7FA;--card:#FFFFFF;--line:#E1E7EF;--ink:#0F172A;--mut:#5A6B80;--acc:#0369A1;--ok:#15803D}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 1.25rem 3rem}
 .wrap{max-width:46rem;margin:0 auto}a{color:var(--acc)}
 header{padding:3rem 0 1.5rem;border-bottom:1px solid var(--line)}
@@ -46,6 +50,36 @@ th{border-top:0;color:var(--mut);font-size:.78rem;text-transform:uppercase;lette
 ul{padding-left:1.2rem}li{margin:.3rem 0}
 img.hero{width:100%;border:1px solid var(--line);border-radius:12px;margin-top:1rem}
 footer{padding-top:1.25rem;display:flex;gap:1rem;flex-wrap:wrap;justify-content:space-between}
+.skip{position:absolute;left:1rem;top:-4rem;background:var(--acc);color:#04121F;font-weight:700;padding:.6rem 1rem;border-radius:0 0 10px 10px;z-index:80;transition:top .15s ease;text-decoration:none}
+.skip:focus{top:0}
+nav.top{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.nav-links{display:flex;gap:1.1rem;align-items:center}
+.nav-toggle{display:none;background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:1rem;line-height:1;padding:.35rem .6rem;cursor:pointer}
+#themeBtn{background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:.95rem;line-height:1;padding:.35rem .55rem;cursor:pointer}
+@media (max-width:640px){.nav-links{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--card);border-bottom:1px solid var(--line);padding:.4rem 1.25rem .8rem}nav.top{flex-wrap:wrap}.nav-links.open{display:flex}.nav-links a{padding:.55rem 0;border-top:1px solid var(--line)}.nav-toggle{display:block}}
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--acc),var(--ok));z-index:70}
+#toTop{position:fixed;right:1rem;bottom:1rem;z-index:60;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:1.1rem;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .2s ease}
+#toTop.show{opacity:1;pointer-events:auto}
+#contactFab{position:fixed;right:1rem;bottom:4.75rem;z-index:60;width:44px;height:44px;border-radius:50%;background:var(--acc);color:#04121F;font-size:1.15rem;font-weight:700;display:flex;align-items:center;justify-content:center;text-decoration:none}
+.searchbox{display:flex;gap:.5rem;margin:1rem 0;max-width:32rem}
+.searchbox input{flex:1;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.55rem .75rem;min-width:0}
+details.faq{border:1px solid var(--line);border-radius:10px;margin:.5rem 0;padding:.6rem .8rem;background:var(--card)}
+details.faq summary{cursor:pointer;font-weight:600;color:var(--ink)}
+details.faq summary:hover{color:var(--acc)}
+details.faq p{margin:.5rem 0 0}
+.newsletter{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem;margin-top:1.5rem}
+.newsletter form{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.6rem}
+.newsletter input{flex:1 1 12rem;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.55rem .75rem;min-width:0}
+.newsletter button{flex:0 0 auto;background:var(--acc);color:#04121F;border:0;border-radius:10px;padding:.55rem 1rem;font-weight:700;cursor:pointer}
+#nl-ok{display:none;margin-top:.6rem;color:var(--ok);font-weight:600}
+.copywrap{position:relative;display:inline-block;max-width:100%}
+.copybtn{background:transparent;border:1px solid var(--line);border-radius:6px;color:var(--mut);font-size:.72rem;padding:.15rem .45rem;cursor:pointer;margin-left:.4rem;vertical-align:middle}
+.copybtn:hover{color:var(--acc);border-color:var(--acc)}
+#cookiebar{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:65;display:none;max-width:34rem;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;font-size:.85rem;color:var(--mut)}
+#cookiebar.show{display:flex;gap:.8rem;align-items:center;justify-content:space-between}
+#cookiebar button{flex:0 0 auto;background:var(--acc);color:#04121F;border:0;border-radius:8px;padding:.45rem .9rem;font-weight:700;cursor:pointer}
+@media print{nav.top,#progress,#toTop,#contactFab,#cookiebar,.cta,.searchbox,.newsletter{display:none}body{background:#fff;color:#000}details:not([open])>*:nth-child(n+2){display:block}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 </style>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Sinka","applicationCategory":"BusinessApplication","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"license":"https://opensource.org/licenses/MIT","description":"Open-source Gmailify alternative: fans one Gmail inbox out to many team inboxes with byte-exact IMAP copies. No forwarding, no send caps.","url":"https://janasco.github.io/sinka/","author":{"@type":"Organization","name":"janasco"},"sameAs":["https://github.com/janasco/sinka"]}
@@ -53,18 +87,23 @@ footer{padding-top:1.25rem;display:flex;gap:1rem;flex-wrap:wrap;justify-content:
 </head>
 <body>
 <div class="wrap">
-<nav class="top" aria-label="Site"><span class="brand">Sinka</span><a href="https://janasco.github.io/sinka/">Home</a><a href="https://janasco.github.io/sinka/use-cases/">Use cases</a><a href="https://github.com/janasco/sinka">GitHub</a></nav>
+<a class="skip" href="#main">Skip to content</a>
+<nav class="top" aria-label="Site"><span class="brand">Sinka</span><span class="nav-links" id="navLinks"><a href="https://janasco.github.io/sinka/" aria-current="page">Home</a><a href="https://janasco.github.io/sinka/use-cases/">Use cases</a><a href="https://github.com/janasco/sinka?utm_source=sinka-site&utm_medium=website&utm_content=nav">GitHub</a></span><button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">&#9776;</button><button id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode">&#9681;</button></nav>
 <header>
 <p class="fine">Free · Open source (MIT) · Self-hosted</p>
 <h1>Sinka: the open-source Gmailify alternative that runs the other way</h1>
 <p class="sub">Gmailify pulls many addresses into <em>one</em> Gmail account. Sinka fans <em>one</em> inbox out to <em>many</em> team inboxes — with byte-exact IMAP copies, no forwarding, and no daily send caps.</p>
 <div class="cta">
-<a class="btn" href="https://github.com/janasco/sinka">Get Sinka on GitHub</a>
+<a class="btn" href="https://github.com/janasco/sinka?utm_source=sinka-site&utm_medium=website&utm_content=home-hero">Get Sinka on GitHub</a>
 <a class="btn ghost" href="#gmailify-vs-sinka">Sinka vs Gmailify</a>
 </div>
+<form class="searchbox" role="search" action="https://janasco.github.io/sinka/use-cases/" method="get">
+<input type="search" name="q" placeholder="Search 50 use cases: clinic, school, retina…" aria-label="Search use cases" autocomplete="off">
+<button class="btn ghost" type="submit">Search</button>
+</form>
 <img class="hero" src="assets/preview.png" alt="Sinka dashboard showing one source inbox fanning out into team inboxes" width="1280" height="640">
 </header>
-<main>
+<main id="main">
 <section id="why-alternative">
 <h2>Looking for a Gmailify alternative?</h2>
 <p>Gmailify (Gmail's “check mail from other accounts”) collects mail from other addresses into one Gmail inbox. That works until your <em>team</em> needs the mail: everyone shares one login, re-forwarding hits Gmail's daily send caps, and forwarded copies break DKIM/SPF signatures.</p>
@@ -103,31 +142,60 @@ footer{padding-top:1.25rem;display:flex;gap:1rem;flex-wrap:wrap;justify-content:
 <h2>Get started in four commands</h2>
 <ul>
 <li>Turn on IMAP and create one App Password per inbox (source + each team inbox).</li>
-<li><code>git clone https://github.com/janasco/sinka.git &amp;&amp; cd sinka &amp;&amp; npm install</code></li>
+<li><span class="copywrap"><code id="cmd1">git clone https://github.com/janasco/sinka.git &amp;&amp; cd sinka &amp;&amp; npm install</code><button class="copybtn" data-copy="cmd1" aria-label="Copy install command">Copy</button></span></li>
 <li>Copy <code>.env.example</code> to <code>.env</code> and fill in the addresses and App Passwords.</li>
-<li><code>npm run poll-once &amp;&amp; npm start</code> — open the dashboard and press <strong>Send a test copy</strong>.</li>
+<li><span class="copywrap"><code id="cmd2">npm run poll-once &amp;&amp; npm start</code><button class="copybtn" data-copy="cmd2" aria-label="Copy run command">Copy</button></span> — open the dashboard and press <strong>Send a test copy</strong>.</li>
 </ul>
-<p>Run it day and night on Cloudflare's edge (Worker + container + D1) or on any computer with Node 20+. Full runbook in the repo: <a href="https://github.com/janasco/sinka/blob/main/DEPLOY_EDGE.md">DEPLOY_EDGE.md</a>.</p>
+<p>Run it day and night on Cloudflare's edge (Worker + container + D1) or on any computer with Node 20+. Full runbook in the repo: <a href="https://github.com/janasco/sinka/blob/main/DEPLOY_EDGE.md?utm_source=sinka-site&utm_medium=website&utm_content=home-docs">DEPLOY_EDGE.md</a>.</p>
 </section>
 <section id="faq">
 <h2>Gmailify alternative FAQ</h2>
-<h3>Is Sinka free?</h3>
-<p>Yes. MIT-licensed open source; the only costs are whatever you already pay for Gmail and, for 24/7 edge hosting, a Cloudflare Workers Paid plan.</p>
-<h3>Does Sinka forward emails?</h3>
-<p>No — and that is the point. Forwarding re-sends mail (send caps, broken signatures). Sinka APPENDs the raw bytes into each inbox over IMAP, so copies arrive as ordinary messages that were never “sent.”</p>
-<h3>Gmailify vs Sinka — which should I choose?</h3>
-<p>Choose Gmailify if one person collects mail from several of their own addresses. Choose Sinka if one inbox (support@, info@, orders@) must reach a whole team, each in their own inbox.</p>
-<h3>Do team members need to share a password?</h3>
-<p>No. Each inbox uses its own App Password, revocable independently. Nobody shares a mailbox login.</p>
-<h3>What happens when a password is revoked?</h3>
-<p>That one inbox is flagged after three refusals while the rest keep copying. Fix the password, press “Send a test copy,” and copying resumes — the dashboard tells you exactly which inbox needs help.</p>
-<h3>Can I see whether Sinka is working?</h3>
-<p>Yes. The dashboard shows a one-line verdict plus per-inbox tiles, and <code>/status</code> is a public, counts-only status page with recent-check history.</p>
+<details class="faq"><summary>Is Sinka free?</summary><p>Yes. MIT-licensed open source; the only costs are whatever you already pay for Gmail and, for 24/7 edge hosting, a Cloudflare Workers Paid plan.</p></details>
+<details class="faq"><summary>Does Sinka forward emails?</summary><p>No — and that is the point. Forwarding re-sends mail (send caps, broken signatures). Sinka APPENDs the raw bytes into each inbox over IMAP, so copies arrive as ordinary messages that were never “sent.”</p></details>
+<details class="faq"><summary>Gmailify vs Sinka — which should I choose?</summary><p>Choose Gmailify if one person collects mail from several of their own addresses. Choose Sinka if one inbox (support@, info@, orders@) must reach a whole team, each in their own inbox.</p></details>
+<details class="faq"><summary>Do team members need to share a password?</summary><p>No. Each inbox uses its own App Password, revocable independently. Nobody shares a mailbox login.</p></details>
+<details class="faq"><summary>What happens when a password is revoked?</summary><p>That one inbox is flagged after three refusals while the rest keep copying. Fix the password, press “Send a test copy,” and copying resumes — the dashboard tells you exactly which inbox needs help.</p></details>
+<details class="faq"><summary>Can I see whether Sinka is working?</summary><p>Yes. The dashboard shows a one-line verdict plus per-inbox tiles, and <code>/status</code> is a public, counts-only status page with recent-check history.</p></details>
+</section>
+<section id="newsletter" aria-labelledby="nl-h">
+<h2>Get the new use cases by email</h2>
+<p class="mut">One email when a new batch of use cases lands. No spam, no tracking — and you can see exactly what is stored, because it never leaves your browser.</p>
+<div class="newsletter">
+<form id="nl-form">
+<label class="vh" for="nl-email" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Email address</label>
+<input type="email" id="nl-email" placeholder="you@example.com" autocomplete="email" required>
+<button type="submit">Notify me</button>
+</form>
+<p id="nl-ok" role="status"></p>
+</div>
 </section>
 </main>
 <footer>
-<p class="fine">Sinka © 2026 janasco · MIT · <a href="https://github.com/janasco/sinka">GitHub</a> · <a href="https://github.com/janasco/sinka/blob/main/README.md">Docs</a></p>
+<p class="fine">Sinka © 2026 janasco · MIT · <a href="https://github.com/janasco/sinka?utm_source=sinka-site&utm_medium=website&utm_content=home-footer">GitHub</a> · <a href="https://github.com/janasco/sinka/blob/main/README.md?utm_source=sinka-site&utm_medium=website&utm_content=home-footer">Docs</a></p>
 </footer>
 </div>
+<a id="contactFab" href="https://github.com/janasco/sinka/issues/new?utm_source=sinka-site&utm_medium=website&utm_content=contact-fab" aria-label="Ask a question about Sinka" title="Ask a question">?</a>
+<button id="toTop" aria-label="Back to top" title="Back to top">&uarr;</button>
+<div id="cookiebar" role="notice"><span>This site sets no cookies, runs no analytics and loads nothing from third parties.</span><button id="cookieOk">Got it</button></div>
+<div id="progress" aria-hidden="true"></div>
+<script>
+var tb=document.getElementById('themeBtn');
+if(tb)tb.onclick=function(){var h=document.documentElement;var cur=h.getAttribute('data-theme');var nxt=(cur==='light')?'dark':'light';try{localStorage.setItem('sinka-theme',nxt);}catch(e){}h.setAttribute('data-theme',nxt);};
+var nt=document.getElementById('navToggle'),nl=document.getElementById('navLinks');
+if(nt&&nl)nt.onclick=function(){var open=nl.classList.toggle('open');nt.setAttribute('aria-expanded',open?'true':'false');};
+var pb=document.getElementById('progress');
+function paintBar(){if(!pb)return;var d=document.documentElement;var max=d.scrollHeight-d.clientHeight;pb.style.width=(max>0?(d.scrollTop/max*100):0)+'%';}
+addEventListener('scroll',paintBar,{passive:true});paintBar();
+var tt=document.getElementById('toTop');
+if(tt){addEventListener('scroll',function(){if(document.documentElement.scrollTop>600)tt.classList.add('show');else tt.classList.remove('show');},{passive:true});
+tt.onclick=function(){try{scrollTo({top:0,behavior:(matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth')});}catch(e){scrollTo(0,0);}};}
+var cb=document.getElementById('cookiebar'),cok=document.getElementById('cookieOk');
+try{if(!localStorage.getItem('sinka-cook')&&cb)cb.classList.add('show');}catch(e){if(cb)cb.classList.add('show');}
+if(cok)cok.onclick=function(){try{localStorage.setItem('sinka-cook','1');}catch(e){}if(cb)cb.classList.remove('show');};
+var cps=document.querySelectorAll('[data-copy]');
+for(var i=0;i<cps.length;i++)(function(b){b.onclick=function(){var t=document.getElementById(b.getAttribute('data-copy'));var txt=t?t.textContent:'';function done(){var o=b.textContent;b.textContent='Copied';setTimeout(function(){b.textContent=o;},1500);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done,done);}else{try{var ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);}catch(e){}done();}};})(cps[i]);
+var nf=document.getElementById('nl-form');
+if(nf)nf.onsubmit=function(e){if(e&&e.preventDefault)e.preventDefault();var n=document.getElementById('nl-email');var v=n?String(n.value||'').trim():'';var ok=document.getElementById('nl-ok');if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){if(ok){ok.style.display='block';ok.textContent='Please enter a valid email address.';}return false;}var when=new Date();try{localStorage.setItem('sinka-nl',JSON.stringify({email:v,at:when.toISOString()}));}catch(e){}if(ok){ok.style.display='block';try{ok.textContent='You are on the list — signed up '+when.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})+'.';}catch(x){ok.textContent='You are on the list.';}}return false;};
+</script>
 </body>
 </html>

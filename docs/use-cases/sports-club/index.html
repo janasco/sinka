@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script>try{var t=localStorage.getItem('sinka-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <title>Sports Club: Registrations to Coaches and Admin | Sinka</title>
 <meta name="description" content="Trial requests and fixture changes copied to coaches and admin. Sinka fans one club inbox out to everyone who runs the weekend.">
 <link rel="canonical" href="https://janasco.github.io/sinka/use-cases/sports-club/">
@@ -18,51 +19,102 @@
 <meta name="twitter:image" content="https://janasco.github.io/sinka/assets/use-cases/sports-club.jpg">
 <link rel="icon" type="image/svg+xml" href="https://janasco.github.io/sinka/assets/favicon.svg">
 <style>:root{color-scheme:dark light;--bg:#0B0F16;--card:#111826;--line:#223047;--ink:#EEF3FA;--mut:#9AA9BE;--acc:#38BDF8;--ok:#34D399}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 1.25rem 3rem}
+:root[data-theme="dark"]{color-scheme:dark;--bg:#0B0F16;--card:#111826;--line:#223047;--ink:#EEF3FA;--mut:#9AA9BE;--acc:#38BDF8;--ok:#34D399}
+:root[data-theme="light"]{color-scheme:light;--bg:#F5F7FA;--card:#FFFFFF;--line:#E1E7EF;--ink:#0F172A;--mut:#5A6B80;--acc:#0369A1;--ok:#15803D}
+@media (prefers-color-scheme:light){:root:not([data-theme]){color-scheme:light;--bg:#F5F7FA;--card:#FFFFFF;--line:#E1E7EF;--ink:#0F172A;--mut:#5A6B80;--acc:#0369A1;--ok:#15803D}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:0 1.25rem 6rem;animation:pagein .35s ease}
+@keyframes pagein{from{opacity:0}to{opacity:1}}
 .wrap{max-width:46rem;margin:0 auto}a{color:var(--acc)}
-.crumb{font-size:.85rem;color:var(--mut);padding:1.25rem 0 0}.crumb a{color:var(--mut)}
-nav.top{display:flex;gap:1.1rem;align-items:center;padding:.9rem 0;border-bottom:1px solid var(--line);font-size:.92rem}
+.skip{position:absolute;left:1rem;top:-4rem;background:var(--acc);color:#04121F;font-weight:700;padding:.6rem 1rem;border-radius:0 0 10px 10px;z-index:80;transition:top .15s ease;text-decoration:none}
+.skip:focus{top:0}
+.crumb{font-size:.85rem;color:var(--mut);padding:1.1rem 0 0}.crumb a{color:var(--mut)}
+nav.top{position:sticky;top:0;z-index:50;display:flex;gap:1.1rem;align-items:center;padding:.7rem 0;margin:0 -1.25rem;padding-left:1.25rem;padding-right:1.25rem;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line);font-size:.92rem}
 nav.top a{color:var(--mut);text-decoration:none}nav.top a:hover{color:var(--acc)}
-nav.top .brand{color:var(--ink);font-weight:700;margin-right:auto}
+nav.top .brand{color:var(--ink);font-weight:700;margin-right:auto;text-decoration:none}
+.nav-links{display:flex;gap:1.1rem;align-items:center}
+.nav-toggle{display:none;background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:1rem;line-height:1;padding:.35rem .6rem;cursor:pointer}
+#themeBtn{background:none;border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:.95rem;line-height:1;padding:.35rem .55rem;cursor:pointer}
+@media (max-width:640px){.nav-links{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--card);border-bottom:1px solid var(--line);padding:.4rem 1.25rem .8rem}nav.top{position:sticky;flex-wrap:wrap}.nav-links.open{display:flex}.nav-links a{padding:.55rem 0;border-top:1px solid var(--line)}.nav-links a:first-child{border-top:0}.nav-toggle{display:block}nav.top{position:sticky}}
+#progress{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,var(--acc),var(--ok));z-index:70}
 h1{font-size:1.7rem;line-height:1.25;margin:.5rem 0;letter-spacing:-.01em}
 .sub{color:var(--mut);margin:.4rem 0 1rem}
 img.hero{width:100%;border:1px solid var(--line);border-radius:12px;margin-top:1rem}
-.credit{font-size:.78rem;color:var(--mut);margin-top:.35rem}.credit a{color:var(--mut)}
 main section{padding:1.25rem 0;border-bottom:1px solid var(--line)}
 h2{font-size:1.2rem;margin:0 0 .6rem}ul,ol{padding-left:1.2rem}li{margin:.35rem 0}
+.updated{font-size:.8rem;color:var(--mut);margin-top:1rem}
 .cta{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem;margin-top:1.5rem}
-.btn{display:inline-block;background:var(--acc);color:#04121F;font-weight:700;border-radius:10px;padding:.55rem 1rem;text-decoration:none;margin:.25rem .4rem .25rem 0}
+.btn{display:inline-block;background:var(--acc);color:#04121F;font-weight:700;border-radius:10px;padding:.55rem 1rem;text-decoration:none;margin:.25rem .4rem .25rem 0;transition:transform .15s ease,opacity .15s ease}
+.btn:hover{transform:translateY(-1px);opacity:.94}
 .btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+.btn.ghost:hover{background:color-mix(in srgb,var(--acc) 12%,transparent)}
 .pn{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-top:1.5rem;font-size:.9rem}
 footer{padding-top:1.25rem;font-size:.85rem;color:var(--mut)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.8rem;margin-top:1rem}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;transition:transform .15s ease,border-color .15s ease}
+.card:hover{transform:translateY(-2px);border-color:var(--acc)}
 .card img{width:100%;height:130px;object-fit:cover;display:block}
 .card div{padding:.7rem .8rem}.card h2{font-size:.98rem;margin:0 0 .3rem}.card h2 a{color:var(--ink);text-decoration:none}.card h2 a:hover{color:var(--acc)}
-.card p{font-size:.83rem;color:var(--mut);margin:0}</style>
-<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "Sports club: the fixture change reaches the coach", "description": "Trial requests and fixture changes copied to coaches and admin. Sinka fans one club inbox out to everyone who runs the weekend.", "url": "https://janasco.github.io/sinka/use-cases/sports-club/", "image": "https://janasco.github.io/sinka/assets/use-cases/sports-club.jpg", "author": {"@type": "Organization", "name": "janasco"}}</script>
+.card p{font-size:.83rem;color:var(--mut);margin:0}
+.searchbox{display:flex;gap:.5rem;margin:1rem 0}
+.searchbox input{flex:1;font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.55rem .75rem;min-width:0}
+.searchbox input:focus{border-color:var(--acc);outline:none}
+#searchCount{font-size:.83rem;color:var(--mut);margin:.2rem 0 .6rem;min-height:1.2em}
+#toTop{position:fixed;right:1rem;bottom:1rem;z-index:60;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:1.1rem;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .2s ease,transform .15s ease}
+#toTop.show{opacity:1;pointer-events:auto}
+#toTop:hover{transform:translateY(-2px);border-color:var(--acc)}
+#contactFab{position:fixed;right:1rem;bottom:4.75rem;z-index:60;width:44px;height:44px;border-radius:50%;background:var(--acc);color:#04121F;font-size:1.15rem;font-weight:700;display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 8px 20px -8px var(--acc)}
+#contactFab:hover{transform:translateY(-2px)}
+#cookiebar{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:65;display:none;max-width:34rem;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:.8rem 1rem;font-size:.85rem;color:var(--mut)}
+#cookiebar.show{display:flex;gap:.8rem;align-items:center;justify-content:space-between}
+#cookiebar button{flex:0 0 auto;background:var(--acc);color:#04121F;border:0;border-radius:8px;padding:.45rem .9rem;font-weight:700;cursor:pointer}
+@media print{header.site-bar,nav.top,#progress,#toTop,#contactFab,#cookiebar,.cta,.pn,.searchbox{display:none}body{background:#fff;color:#000}.card,.cta{border:1px solid #999}details:not([open])>*:nth-child(n+2){display:block}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}html{scroll-behavior:auto}body{animation:none}}</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "Sports club: the fixture change reaches the coach", "description": "Trial requests and fixture changes copied to coaches and admin. Sinka fans one club inbox out to everyone who runs the weekend.", "url": "https://janasco.github.io/sinka/use-cases/sports-club/", "image": "https://janasco.github.io/sinka/assets/use-cases/sports-club.jpg", "author": {"@type": "Organization", "name": "janasco"}, "dateModified": "2026-10-29"}</script>
 </head>
 <body>
 <div class="wrap">
-<nav class="top" aria-label="Site"><span class="brand">Sinka</span><a href="https://janasco.github.io/sinka/">Home</a><a href="https://janasco.github.io/sinka/use-cases/">Use cases</a><a href="https://github.com/janasco/sinka">GitHub</a></nav>
+<a class="skip" href="#main">Skip to content</a><nav class="top" aria-label="Site"><span class="brand">Sinka</span><span class="nav-links" id="navLinks"><a href="https://janasco.github.io/sinka/">Home</a><a href="https://janasco.github.io/sinka/use-cases/" aria-current="page">Use cases</a><a href="https://github.com/janasco/sinka?utm_source=sinka-site&utm_medium=website&utm_content=nav">GitHub</a></span><button class="nav-toggle" id="navToggle" aria-label="Menu" aria-expanded="false" aria-controls="navLinks">&#9776;</button><button id="themeBtn" aria-label="Toggle dark mode" title="Toggle dark mode">&#9681;</button></nav>
 <p class="crumb"><a href="https://janasco.github.io/sinka/">Home</a> / <a href="https://janasco.github.io/sinka/use-cases/">Use cases</a> / Sports club: the fixture change reaches the coach</p>
 <header>
 <h1>Sports club: the fixture change reaches the coach</h1>
 <p class="sub">Trial requests and fixture changes copied to coaches and admin. Sinka fans one club inbox out to everyone who runs the weekend.</p>
 <img class="hero" src="https://janasco.github.io/sinka/assets/use-cases/sports-club.jpg" alt="Sports club: the fixture change reaches the coach" width="640" height="427" loading="lazy">
 </header>
-<main>
+<main id="main">
 <section><h2>The setup</h2><p>Club secretary Uma fans info@ out to herself, three age-group coaches and the fixtures officer. Everyone reads on their own phone.</p></section>
 <section><h2>How the mail flows</h2><ol><li>The league moves Saturday&#x27;s U12 fixture Friday night.</li><li>Coach and fixtures officer both hold the identical notice within minutes.</li><li>Parents hear the right ground before bedtime.</li><li>info@ keeps the registration and consent record in one place.</li></ol></section>
 <section><h2>Why Sinka fits here</h2><ul><li>Venue changes stop stranding teams at locked gates.</li><li>Trial requests reach the right age-group coach directly.</li><li>New-season volunteers get copies on day one, revoked when they step down.</li></ul></section>
 <section><h2>Watch out for</h2><ul><li>Coaches reply as themselves — parents learn a name, which is good — but keep info@ CC&#x27;d on logistics.</li><li>DBS and medical details need tighter handling than fixture news; separate the addresses.</li></ul></section>
+<p class="updated">Last updated: 29 October 2026 &middot; <a href="https://janasco.github.io/sinka/use-cases/">Browse all use cases</a></p>
 <div class="cta"><strong>Try this setup yourself.</strong> Sinka is free and open source — one inbox in, every teammate covered.<br>
-<a class="btn" href="https://github.com/janasco/sinka">Get Sinka on GitHub</a>
-<a class="btn ghost" href="https://janasco.github.io/sinka/use-cases/">Browse all use cases</a>
-<a class="btn ghost" href="https://janasco.github.io/sinka/">How Sinka works</a></div>
+<a class="btn" href="https://github.com/janasco/sinka?utm_source=sinka-site&utm_medium=website&utm_content=post-cta">Get Sinka on GitHub</a>
+</div>
 <div class="pn"><span>&larr; <a href="../nonprofit-donors/">Nonprofit: fundraising and finance read the same donor</a></span><span><a href="../fitness-studio/">Fitness studio: the 6am cancellation reaches the coach</a> &rarr;</span></div>
 </main>
-<footer><p>Sinka &middot; free open-source Gmailify alternative (MIT) &middot; <a href="https://github.com/janasco/sinka">GitHub</a> &middot; <a href="https://janasco.github.io/sinka/">Home</a></p></footer>
+<footer><p>Sinka &middot; free open-source Gmailify alternative (MIT) &middot; <a href="https://github.com/janasco/sinka?utm_source=sinka-site&utm_medium=website&utm_content=footer">GitHub</a> &middot; <a href="https://janasco.github.io/sinka/">Home</a> &middot; <a href="https://janasco.github.io/sinka/use-cases/">Use cases</a></p></footer>
 </div>
+
+<a id="contactFab" href="https://github.com/janasco/sinka/issues/new?utm_source=sinka-site&utm_medium=website&utm_content=contact-fab" aria-label="Ask a question about Sinka" title="Ask a question">?</a>
+<button id="toTop" aria-label="Back to top" title="Back to top">&uarr;</button>
+<div id="cookiebar" role="notice"><span>This site sets no cookies, runs no analytics and loads nothing from third parties.</span><button id="cookieOk">Got it</button></div>
+<div id="progress" aria-hidden="true"></div>
+<script>
+
+var tb=document.getElementById('themeBtn');
+if(tb)tb.onclick=function(){var h=document.documentElement;var cur=h.getAttribute('data-theme');var next=(cur==='light')?'dark':'light';try{localStorage.setItem('sinka-theme',next);}catch(e){}h.setAttribute('data-theme',next);};
+var nt=document.getElementById('navToggle'),nl=document.getElementById('navLinks');
+if(nt&&nl)nt.onclick=function(){var open=nl.classList.toggle('open');nt.setAttribute('aria-expanded',open?'true':'false');};
+var pb=document.getElementById('progress');
+function paintBar(){if(!pb)return;var d=document.documentElement;var max=d.scrollHeight-d.clientHeight;pb.style.width=(max>0?(d.scrollTop/max*100):0)+'%';}
+addEventListener('scroll',paintBar,{passive:true});paintBar();
+var tt=document.getElementById('toTop');
+if(tt){addEventListener('scroll',function(){if(document.documentElement.scrollTop>600)tt.classList.add('show');else tt.classList.remove('show');},{passive:true});
+tt.onclick=function(){try{scrollTo({top:0,behavior:(matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth')});}catch(e){scrollTo(0,0);}};}
+var cb=document.getElementById('cookiebar'),cok=document.getElementById('cookieOk');
+try{if(!localStorage.getItem('sinka-cook')&&cb)cb.classList.add('show');}catch(e){if(cb)cb.classList.add('show');}
+if(cok)cok.onclick=function(){try{localStorage.setItem('sinka-cook','1');}catch(e){}if(cb)cb.classList.remove('show');};
+
+</script>
 </body>
 </html>
