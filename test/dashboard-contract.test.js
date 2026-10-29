@@ -156,12 +156,13 @@ function boot({ payload = healthyPayload(), confirmResult = true } = {}) {
   }
 
   const fetches = [];
+  const docListeners = {};
   const sandbox = {
     document: {
       hidden: false,
       getElementById: node,
       querySelector: () => null,
-      addEventListener() {},
+      addEventListener(type, fn) { (docListeners[type] = docListeners[type] || []).push(fn); },
       body: { classList: { add() {}, remove() {}, toggle() {} } },
     },
     window: { matchMedia: () => ({ matches: false }) },
@@ -181,7 +182,7 @@ function boot({ payload = healthyPayload(), confirmResult = true } = {}) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(SCRIPT, sandbox, { filename: 'inline-dashboard.js' });
-  return { sandbox, node, fetches, nodes };
+  return { sandbox, node, fetches, nodes, docListeners };
 }
 
 /** Let the script's initial `refresh()` promise chain settle. */
@@ -393,21 +394,92 @@ test('the private token is typed into a password field and never echoed back', (
   assert.match(VISIBLE, /never written to disk|held in memory only|keeps it in memory/i);
 });
 
-test('the backlog action is guarded by a confirm() the operator must accept', async () => {
-  const declined = boot({ confirmResult: false });
-  await settle();
-  declined.fetches.length = 0;
-  declined.node('btn-base').onclick();
-  await settle();
-  assert.deepEqual(declined.fetches, [], 'declining the confirm must not call /api/baseline');
+test('the backlog action opens a confirm modal instead of a native confirm()', async () => {
+  // (a) The modal markup exists, carries the dialog role, and starts hidden.
+  const modal = /<div id="confirm-modal"([^>]*)>/.exec(MARKUP);
+  assert.ok(modal, 'no #confirm-modal in the template');
+  assert.match(modal[1], /role="alertdialog"/, 'the modal must carry role="alertdialog"');
+  assert.match(modal[1], /(^|\s)hidden(\s|$|>)/, 'the modal must start hidden');
+  assert.doesNotMatch(SCRIPT, /confirm\s*\(/, 'the inline script must not call the native confirm()');
 
-  const accepted = boot({ confirmResult: true });
+  const booted = boot();
   await settle();
-  accepted.fetches.length = 0;
-  accepted.node('btn-base').onclick();
+  booted.fetches.length = 0;
+
+  // (b) Opening the modal performs no request and unhides it.
+  booted.node('btn-base').onclick();
   await settle();
-  assert.equal(accepted.fetches[0] && accepted.fetches[0].path, '/api/baseline');
-  assert.match(SCRIPT, /if\s*\(\s*!\s*confirm\(/, 'the guard must be an explicit early return on confirm()');
+  assert.deepEqual(booted.fetches, [], 'opening the confirm modal must not call the server');
+  assert.equal(booted.node('confirm-modal').hidden, false, 'the modal must unhide on #btn-base');
+
+  // (c) Backing out re-hides it, still with no request.
+  booted.node('btn-confirm-no').onclick();
+  await settle();
+  assert.equal(booted.node('confirm-modal').hidden, true, 'the modal must re-hide on #btn-confirm-no');
+  assert.deepEqual(booted.fetches, [], 'closing the modal must not call the server');
+
+  // (d) Confirming posts /api/baseline exactly once. The refresh that follows
+  // re-reads /api/status, which is expected — asserted the way the verb test
+  // below does, by ignoring status redraws.
+  booted.node('btn-base').onclick();
+  await settle();
+  booted.node('btn-confirm-yes').onclick();
+  await settle();
+  const posts = booted.fetches.filter((f) => f.path === '/api/baseline');
+  assert.equal(posts.length, 1, `expected one POST to /api/baseline, saw ${JSON.stringify(booted.fetches)}`);
+  assert.equal(posts[0].method, 'POST', '"Skip the backlog" must POST /api/baseline');
+  const extra = booted.fetches.map((f) => f.path).filter((p) => p !== '/api/baseline' && p !== '/api/status');
+  assert.deepEqual(extra, [], `confirming called something unexpected: ${extra.join(', ')}`);
+  assert.equal(booted.node('confirm-modal').hidden, true, 'the modal must close when confirming');
+});
+
+test('Escape closes the confirm modal without calling the server', async () => {
+  const booted = boot();
+  await settle();
+  booted.fetches.length = 0;
+  booted.node('btn-base').onclick();
+  await settle();
+  assert.equal(booted.node('confirm-modal').hidden, false, 'the modal must be open before Escape');
+  const keydowns = booted.docListeners.keydown || [];
+  assert.ok(keydowns.length >= 1, 'the page registers no keydown listener, so Escape cannot close the modal');
+  for (const fn of keydowns) fn({ key: 'Escape' });
+  await settle();
+  assert.equal(booted.node('confirm-modal').hidden, true, 'Escape must close the modal');
+  assert.deepEqual(booted.fetches, [], 'Escape must not call the server');
+});
+
+test('the dashboard token box has a show/hide toggle wired to the password field', async () => {
+  const tgl = /<button[^>]*\sid="tgl-token"[^>]*>([^<]*)</.exec(MARKUP);
+  assert.ok(tgl, 'no #tgl-token button in the template');
+  assert.match(tgl[0], /aria-label="Show private token"/, 'the toggle must label its first state');
+  assert.equal(tgl[1], 'Show', 'the toggle must start by offering to show the token');
+
+  const booted = boot();
+  await settle();
+  assert.equal(typeof booted.node('tgl-token').onclick, 'function', '#tgl-token has no click handler');
+  booted.fetches.length = 0;
+  booted.node('inp-token').type = 'password';
+  booted.node('tgl-token').onclick();
+  assert.equal(booted.node('inp-token').type, 'text', 'the toggle must reveal the token');
+  assert.equal(booted.node('tgl-token').textContent, 'Hide');
+  assert.equal(booted.node('tgl-token').getAttribute('aria-label'), 'Hide private token');
+  booted.node('tgl-token').onclick();
+  assert.equal(booted.node('inp-token').type, 'password', 'the toggle must hide the token again');
+  assert.equal(booted.node('tgl-token').textContent, 'Show');
+  assert.equal(booted.node('tgl-token').getAttribute('aria-label'), 'Show private token');
+  assert.deepEqual(booted.fetches, [], 'toggling visibility must not call the server');
+});
+
+test('the gate page has a show/hide toggle for its own token field', () => {
+  // The gate page is a second template in gatePage(), outside the dashboard
+  // MARKUP slice above, so it is asserted against the source region directly.
+  const gate = SRC.slice(SRC.indexOf('function gatePage()'));
+  const tgl = /<button[^>]*\sid="tgl-gate"[^>]*>/.exec(gate);
+  assert.ok(tgl, 'no #tgl-gate button in the gate page');
+  assert.match(tgl[0], /type="button"/, 'the gate toggle must not submit the form');
+  assert.match(tgl[0], /aria-label="Show private token"/);
+  assert.match(gate, /getElementById\('tgl-gate'\)/, 'the gate script never wires #tgl-gate');
+  assert.match(gate, /getElementById\('g-token'\)/, 'the gate toggle must drive #g-token');
 });
 
 test('the backlog and poll-now actions send POST, matching the registered routes', async () => {
@@ -425,6 +497,8 @@ test('the backlog and poll-now actions send POST, matching the registered routes
   booted.node('btn-poll').onclick();
   await settle();
   booted.node('btn-base').onclick();
+  await settle();
+  booted.node('btn-confirm-yes').onclick();
   await settle();
   booted.node('btn-poll-fix').onclick();
   await settle();

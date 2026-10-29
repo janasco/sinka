@@ -374,6 +374,10 @@ test('the served wiring sends the verb the server actually registers', async () 
   await settle();
   node('btn-base').onclick();
   await settle();
+  assert.ok(!fetches.some((f) => f.path === '/api/baseline'),
+    'opening the confirm modal must not call the server');
+  node('btn-confirm-yes').onclick();
+  await settle();
   node('btn-refresh').onclick();
   await settle();
 

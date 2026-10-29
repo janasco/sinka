@@ -630,6 +630,12 @@ body.frozen .mgrid,body.frozen .dests,body.frozen #details,body.frozen .cklist,b
 .actlist{display:flex;flex-direction:column;gap:.85rem}
 .act{background:var(--card-2);border:1px solid var(--line);border-radius:var(--rs);padding:.95rem 1rem}
 .act.care{border-color:color-mix(in srgb,var(--err) 40%,var(--line))}
+#confirm-modal{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--ink) 45%,transparent);padding:1rem}
+#confirm-modal[hidden]{display:none}
+.confirm-box{background:var(--card);border:1px solid var(--err);border-radius:var(--r);padding:var(--pad);max-width:26rem;width:100%;box-shadow:var(--shadow)}
+.confirm-box h3{font-size:var(--fs-l);margin-bottom:.4rem}
+.confirm-box p{font-size:var(--fs-s);color:var(--mut)}
+.confirm-box .act-btns{margin-top:.9rem}
 .act h3{font-size:var(--fs-s);font-weight:650}
 .act p{font-size:var(--fs-xs);color:var(--mut);margin-top:.2rem}
 .act-btns{display:flex;flex-wrap:wrap;gap:.55rem;margin-top:.65rem}
@@ -868,6 +874,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
       <div class="field">
         <label for="inp-token">Private token for this dashboard</label>
         <input type="password" id="inp-token" autocomplete="off" spellcheck="false" placeholder="Paste your private token">
+        <button type="button" class="ghost" id="tgl-token" aria-label="Show private token">Show</button>
       </div>
     </div>
 
@@ -891,6 +898,17 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
         <button type="button" class="care" id="btn-base">Skip the backlog</button>
       </div>
       <p>&ldquo;Skip the backlog&rdquo; remembers everything currently in the source inbox and copies none of it. Use it once, after a holiday or a flood, so the pile you never wanted is not copied into every team inbox. It asks you to confirm first.</p>
+    </div>
+
+    <div id="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-t" aria-describedby="confirm-d" hidden>
+      <div class="confirm-box">
+        <h3 id="confirm-t">Skip the backlog?</h3>
+        <p id="confirm-d">This remembers everything currently in the source inbox and copies none of it. It cannot be undone.</p>
+        <div class="act-btns">
+          <button type="button" class="care" id="btn-confirm-yes">Yes, skip it</button>
+          <button type="button" class="ghost" id="btn-confirm-no">Keep copying</button>
+        </div>
+      </div>
     </div>
 
     <div id="result" role="status" aria-live="polite" tabindex="-1" aria-busy="false" hidden>
@@ -997,7 +1015,7 @@ var lastAlertHtml=''; // so the alerts are only announced when they really chang
 var countdown=REFRESH_SECS;
 var hiddenSince=0;
 var backTimer=null;
-var BUTTONS=['btn-poll','btn-base','btn-test','btn-refresh','btn-test-fix','btn-poll-fix','btn-forget'];
+var BUTTONS=['btn-poll','btn-base','btn-test','btn-refresh','btn-test-fix','btn-poll-fix','btn-forget','btn-confirm-yes','btn-confirm-no'];
 var DASH='—';
 /* Everything here is a network payload, so a missing, null or wrongly-typed field
    is a fact about the answer and never a reason for this page to invent one. */
@@ -1479,9 +1497,18 @@ if(btnTest)btnTest.onclick=function(){var to=el('inp-to');runAction(btnTest,'Sen
 var btnTestFix=el('btn-test-fix');
 if(btnTestFix)btnTestFix.onclick=function(){var to=el('inp-to');runAction(btnTestFix,'Sending\u2026','test',function(){return api('/api/test-forward',{method:'POST',body:{to:to?to.value:''}});},false);};
 var btnBase=el('btn-base');
-if(btnBase)btnBase.onclick=function(){if(!confirm('Skip the backlog? This remembers everything currently in the source inbox and copies none of it. It cannot be undone.'))return;
- runAction(btnBase,'Skipping\u2026','base',function(){return api('/api/baseline',{method:'POST',body:{}});},true);};
+var lastFocus=null;
+function openConfirm(){var m=el('confirm-modal');if(!m)return;m.hidden=false;lastFocus=document.activeElement||null;var y=el('btn-confirm-yes');if(y)try{y.focus();}catch(e){}}
+function closeConfirm(){var m=el('confirm-modal');if(!m)return;m.hidden=true;if(lastFocus)try{lastFocus.focus();}catch(e){}lastFocus=null;}
+if(btnBase)btnBase.onclick=function(){openConfirm();};
+var btnConfirmYes=el('btn-confirm-yes');
+if(btnConfirmYes)btnConfirmYes.onclick=function(){closeConfirm();runAction(btnBase,'Skipping\u2026','base',function(){return api('/api/baseline',{method:'POST',body:{}});},true);};
+var btnConfirmNo=el('btn-confirm-no');
+if(btnConfirmNo)btnConfirmNo.onclick=function(){closeConfirm();};
+if(typeof document!=='undefined'&&document.addEventListener)document.addEventListener('keydown',function(e){if(e&&e.key==='Escape'){var m=el('confirm-modal');if(m&&!m.hidden)closeConfirm();}});
 var inpToken=el('inp-token');if(inpToken)inpToken.oninput=function(e){token=e.target.value.trim();};
+var tglToken=el('tgl-token');
+if(tglToken)tglToken.onclick=function(){var n=el('inp-token');if(!n)return;if(n.type==='text'){n.type='password';tglToken.textContent='Show';tglToken.setAttribute('aria-label','Show private token');}else{n.type='text';tglToken.textContent='Hide';tglToken.setAttribute('aria-label','Hide private token');}};
 var btnForget=el('btn-forget');
 if(btnForget)btnForget.onclick=function(){setBusy(true,btnForget,'Forgetting…');
  fetch('/status/logout',{method:'POST'}).finally(function(){setBusy(false,btnForget);try{location.reload();}catch(e){}});};
@@ -1548,6 +1575,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <form id="g-form">
 <label for="g-token">Private token for this dashboard</label>
 <input type="password" id="g-token" autocomplete="off" spellcheck="false" placeholder="Paste your private token">
+<button type="button" id="tgl-gate" aria-label="Show private token">Show</button>
 <p class="err" id="g-err" role="alert">That token was not accepted. Try again.</p>
 <button type="submit" id="g-btn">Sign in</button>
 </form>
@@ -1567,6 +1595,11 @@ if(form)form.onsubmit=function(e){
   if(o.ok&&o.body&&o.body.success){try{location.reload();}catch(e){}}
   else{if(err)err.style.display='block';if(btn)btn.disabled=false;}});
  return false;};
+var tglGate=document.getElementById('tgl-gate');
+if(tglGate)tglGate.onclick=function(){
+ var n=document.getElementById('g-token');if(!n)return;
+ if(n.type==='text'){n.type='password';tglGate.textContent='Show';tglGate.setAttribute('aria-label','Show private token');}
+ else{n.type='text';tglGate.textContent='Hide';tglGate.setAttribute('aria-label','Hide private token');}};
 </script>
 </body>
 </html>`;
@@ -1670,6 +1703,9 @@ a{color:var(--acc);text-underline-offset:2px}
 .card{background:linear-gradient(180deg,color-mix(in srgb,var(--card) 96%,#fff 4%),var(--card));border:1px solid var(--line);border-radius:var(--r);padding:var(--pad);box-shadow:var(--shadow)}
 .hero{display:flex;gap:1.1rem;align-items:center;flex-wrap:wrap}
 .hero-face{width:3rem;height:3rem;flex:0 0 auto;display:grid;place-items:center;border-radius:14px;font-size:1.2rem;background:var(--card-2);border:1px solid var(--line-2);color:var(--mut)}
+.hero-face svg{width:62%;height:62%;display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hero-face.spin svg{animation:spin 1.1s linear infinite}
 .hero-t{font-size:clamp(1.35rem,1.05rem + 1.6vw,1.75rem);font-weight:700;margin:0;letter-spacing:-.025em;line-height:1.15}
 .hero-s{color:var(--mut);font-size:var(--fs-s);margin:.35rem 0 0;max-width:38rem}
 .hero.ok{border-color:color-mix(in srgb,var(--ok) 45%,var(--line));box-shadow:var(--shadow),0 0 0 1px color-mix(in srgb,var(--ok) 22%,transparent)}.hero.ok .hero-face,.hero.ok .hero-t{color:var(--ok)}
@@ -1703,7 +1739,7 @@ footer{margin-top:1.5rem;padding-top:1.2rem;border-top:1px solid var(--line);dis
 <main id="main" class="stack">
 <section class="card hero" id="hero" aria-labelledby="hero-h">
 <h2 class="vh" id="hero-h">Current status</h2>
-<span class="hero-face" id="st-face" aria-hidden="true">\u25cf</span>
+<span class="hero-face spin" id="st-face" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/></svg></span>
 <div><div role="status" aria-live="polite"><p class="hero-t" id="st-t">Starting up\u2026</p><p class="hero-s" id="st-s">Asking the server for the first numbers.</p></div></div>
 </section>
 <section class="card" aria-labelledby="m-h">
@@ -1740,14 +1776,16 @@ function humanMs(ms){var n=num(ms);if(n==null||n<=0)return DASH;var s=Math.round
 function escErr(s){return h(String(s||'').slice(0,120));}
 function verdict(d){
  var hero=el('hero'),face=el('st-face');
- var cls='ok',sym='\u25CF',t='Operational',s='Mail checks are finishing.';
- if(!d||typeof d!=='object'){cls='err';sym='\u2715';t='Cannot reach Sinka';s='This page cannot talk to Sinka. It keeps trying.';}
- else if(d.setupNeeded){cls='err';sym='\u2715';t='Needs setup';s='Sinka cannot copy until its sign-in details are set.';}
- else if(!d.lastPollAt){cls='warn';sym='\u25CC';t='Starting up';s='No check has finished yet.';}
- else if(num(d.consecutiveErrors)>=3){cls='err';sym='\u2715';t='Down';s=num(d.consecutiveErrors)+' checks in a row did not finish. Sinka keeps trying, waiting longer each time.';}
- else if(num(d.consecutiveErrors)>=1){cls='warn';sym='\u25D0';t='Degraded';s='The last check did not finish. Sinka is retrying on its own.';}
+ var ICONS={ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.5 2.5L16 9.5"/></svg>',warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 2.8 19.5h18.4L12 3.5z"/><path d="M12 9.5v4.5"/><path d="M12 17.2h.01"/></svg>',err:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 9 6 6M15 9l-6 6"/></svg>',starting:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/></svg>'};
+ function paint(icon){if(!face)return;face.innerHTML=ICONS[icon]||ICONS.ok;if(face.classList)face.classList.toggle('spin',icon==='starting');}
+ var cls='ok',icon='ok',t='Operational',s='Mail checks are finishing.';
+ if(!d||typeof d!=='object'){cls='err';icon='err';t='Cannot reach Sinka';s='This page cannot talk to Sinka. It keeps trying.';}
+ else if(d.setupNeeded){cls='err';icon='err';t='Needs setup';s='Sinka cannot copy until its sign-in details are set.';}
+ else if(!d.lastPollAt){cls='warn';icon='starting';t='Starting up';s='No check has finished yet.';}
+ else if(num(d.consecutiveErrors)>=3){cls='err';icon='err';t='Down';s=num(d.consecutiveErrors)+' checks in a row did not finish. Sinka keeps trying, waiting longer each time.';}
+ else if(num(d.consecutiveErrors)>=1){cls='warn';icon='warn';t='Degraded';s='The last check did not finish. Sinka is retrying on its own.';}
  if(hero)hero.className='card hero '+cls;
- if(face)face.textContent=sym;
+ paint(icon);
  setText('st-t',t);setText('st-s',s);
 }
 function render(d){
