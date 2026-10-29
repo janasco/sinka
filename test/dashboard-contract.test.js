@@ -563,17 +563,25 @@ test('the dashboard pulls in no external asset', () => {
 test('no emoji-presentation characters in operator-facing copy', () => {
   // Characters whose Unicode default presentation is an emoji, plus the
   // selectors that force one (VS-16, keycap, regional indicators). The
-  // geometric/dingbat glyphs the design uses for status (● ◐ ◌ ✓ ✕ ○ ▸) are
-  // Emoji_Presentation=No in Unicode and so sit outside these ranges on
-  // purpose — see the note in the report.
+  // remaining text glyphs (✓ ○ ▸) are Emoji_Presentation=No in Unicode and
+  // so sit outside these ranges on purpose — see the note in the report.
+  // Bigger status marks are inline SVG, which has no code point at all.
   const EMOJI_PRESENTATION = /[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{1FC00}-\u{1FFFD}\u{231A}-\u{231B}\u{23E9}-\u{23FA}\u{25FD}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2705}\u{270A}-\u{270B}\u{2728}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2795}-\u{2797}\u{27B0}\u{27BF}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{FE0F}\u{20E3}\u{3030}\u{303D}\u{3297}\u{3299}]/u;
   for (const [label, text] of [['markup', VISIBLE], ['inline script', VISIBLE_SCRIPT]]) {
     const hit = EMOJI_PRESENTATION.exec(text);
     assert.equal(hit, null, `emoji-presentation character in the ${label}: U+${hit && hit[0].codePointAt(0).toString(16).toUpperCase()}`);
   }
-  // The status glyphs are still the plain-text ones.
-  for (const glyph of ['\u25cf', '\u2715', '\u25d0', '\u25cc', '\u2713', '\u25cb']) {
-    assert.ok(VISIBLE_SCRIPT.includes(glyph), `status glyph ${glyph} is gone`);
+  // The checklist ticks stay plain text; the hero verdict face is an inline
+  // SVG icon now (drawn shapes, no emoji presentation anywhere).
+  for (const glyph of ['\u2713', '\u25cb']) {
+    assert.ok(VISIBLE_SCRIPT.includes(glyph), `checklist glyph ${glyph} is gone`);
+  }
+  for (const needle of ['FACE_ICONS', 'function paintFace', 'innerHTML=FACE_ICONS', '<svg viewBox="0 0 24 24"',
+    'm8 12.5 2.5 2.5L16 9.5', 'M12 3.5 2.8 19.5', 'm9 9 6 6M15 9l-6 6', 'M21 12a9 9 0 1']) {
+    assert.ok(VISIBLE_SCRIPT.includes(needle), `hero icon piece missing from the script: ${needle}`);
+  }
+  for (const glyph of ['\u25cf', '\u2715', '\u25d0', '\u25cc']) {
+    assert.ok(!VISIBLE_SCRIPT.includes(glyph), `text glyph ${glyph} is back in the hero path`);
   }
 });
 

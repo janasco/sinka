@@ -512,6 +512,9 @@ a{color:var(--acc);text-underline-offset:2px}
 /* ---- 2. hero: the one-line answer ---- */
 .hero{display:flex;flex-wrap:wrap;align-items:center;gap:var(--pad)}
 .hero-face{width:3rem;height:3rem;flex:0 0 auto;display:grid;place-items:center;border-radius:14px;font-size:1.2rem;line-height:1;background:var(--card-2);border:1px solid var(--line-2);color:var(--mut)}
+.hero-face svg{width:62%;height:62%;display:block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hero-face.spin svg{animation:spin 1.1s linear infinite}
 .hero-body{flex:1 1 18rem;min-width:0}
 .hero-t{font-size:clamp(1.35rem,1.05rem + 1.6vw,1.75rem);font-weight:700;letter-spacing:-.025em;line-height:1.15}
 .hero-s{color:var(--mut);font-size:var(--fs-s);margin-top:.35rem;max-width:36rem}
@@ -758,6 +761,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
   .conduit.live .pkt{animation:none}
+  .hero-face.spin svg{animation:none}
   button:hover:not(:disabled),.tile:hover{transform:none}
   /* the 800ms tile flash is a status, so the "just now" chip and ring stay instead */
   .tile.flash{background:var(--card);border-color:var(--line)}
@@ -786,7 +790,7 @@ footer .dev{font-size:var(--fs-xs);color:var(--mut);margin-top:.35rem}
 
   <section class="card hero" id="hero" aria-labelledby="hero-h">
     <h2 class="vh" id="hero-h">Is it working?</h2>
-    <span class="hero-face" id="hero-face" aria-hidden="true">&#9679;</span>
+    <span class="hero-face spin" id="hero-face" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/></svg></span>
     <div class="hero-body">
       <div role="status" aria-live="polite">
         <p class="hero-t" id="hero-t">Starting up&hellip;</p>
@@ -1249,24 +1253,26 @@ function malformedFields(d){
  if(r&&r.details!=null&&!Array.isArray(r.details))bad.push('lastResult.details');
  return bad;}
 function malformedLine(bad){return 'The server sent an answer this page cannot read in full ('+bad.join(', ')+' is not a list), so this page will not guess what it means.';}
+var FACE_ICONS={ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m8 12.5 2.5 2.5L16 9.5"/></svg>',warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 2.8 19.5h18.4L12 3.5z"/><path d="M12 9.5v4.5"/><path d="M12 17.2h.01"/></svg>',err:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 9 6 6M15 9l-6 6"/></svg>',starting:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/></svg>'};
+function paintFace(icon){var f=el('hero-face');if(!f)return;f.innerHTML=FACE_ICONS[icon]||FACE_ICONS.ok;if(f.classList)f.classList.toggle('spin',icon==='starting');}
 function renderHero(d,r,cov){
  var hero=el('hero'),face=el('hero-face'),t=el('hero-t'),s=el('hero-s');
  if(!hero||!face||!t||!s)return;
- var cls='ok',symbol='\u25cf',line='Everything is working',sub='New mail is being copied into your team inboxes.';
- var bad=malformedFields(d);
- if(!stateKnown(d)){cls='warn';symbol='\u25cc';line='The server has not told this page anything yet';sub='Sinka answered, but the reply carried no numbers. This page will not invent any; it keeps asking.';}
- else if(bad.length){cls='warn';symbol='\u25d0';line='The server sent an answer this page cannot read in full';sub=malformedLine(bad)+' The numbers below are only the ones it could read.';}
- else if(d.setupNeeded){cls='err';symbol='\u2715';line='One more step needed';sub='Sinka cannot copy anything until its own sign-in details are set. The details are below.';}
- else if(r.error){cls='err';symbol='\u2715';line='The last check did not finish';sub='Sinka is waiting and trying again on its own, a little longer each time. The details are below.';}
- else if(cov.refused){cls='warn';symbol='\u25d0';line=needLine(cov.refused);sub='A sign-in was refused. Fix it, then choose Send a test copy.';}
- else if(cov.missingCount){cls='warn';symbol='\u25d0';line=needLine(cov.missingCount);sub=cov.missingCount+' of the '+cov.total+' listed inboxes'+(cov.missingCount===1?' has':'es have')+' no sign-in details yet, so nothing is copied there. Add the app password, then send a test copy.';}
- else if(!cov.total||!d.sinksConfigured){cls='warn';symbol='\u25d0';line='No team inboxes yet';sub='Add at least one team inbox in the server settings, then send a test copy to check it.';}
- else if(!d.lastPollAt){cls='warn';symbol='\u25cc';line='Starting up';sub='The first check runs in a few seconds.';}
- else if(humanMs(d.pollIntervalMs)===DASH){cls='warn';symbol='\u25cc';line='Waiting for the first check';sub='This page cannot see how often checks run yet.';}
+  var cls='ok',icon='ok',line='Everything is working',sub='New mail is being copied into your team inboxes.';
+  var bad=malformedFields(d);
+  if(!stateKnown(d)){cls='warn';icon='starting';line='The server has not told this page anything yet';sub='Sinka answered, but the reply carried no numbers. This page will not invent any; it keeps asking.';}
+  else if(bad.length){cls='warn';icon='warn';line='The server sent an answer this page cannot read in full';sub=malformedLine(bad)+' The numbers below are only the ones it could read.';}
+  else if(d.setupNeeded){cls='err';icon='err';line='One more step needed';sub='Sinka cannot copy anything until its own sign-in details are set. The details are below.';}
+  else if(r.error){cls='err';icon='err';line='The last check did not finish';sub='Sinka is waiting and trying again on its own, a little longer each time. The details are below.';}
+  else if(cov.refused){cls='warn';icon='warn';line=needLine(cov.refused);sub='A sign-in was refused. Fix it, then choose Send a test copy.';}
+  else if(cov.missingCount){cls='warn';icon='warn';line=needLine(cov.missingCount);sub=cov.missingCount+' of the '+cov.total+' listed inboxes'+(cov.missingCount===1?' has':'es have')+' no sign-in details yet, so nothing is copied there. Add the app password, then send a test copy.';}
+  else if(!cov.total||!d.sinksConfigured){cls='warn';icon='warn';line='No team inboxes yet';sub='Add at least one team inbox in the server settings, then send a test copy to check it.';}
+  else if(!d.lastPollAt){cls='warn';icon='starting';line='Starting up';sub='The first check runs in a few seconds.';}
+  else if(humanMs(d.pollIntervalMs)===DASH){cls='warn';icon='starting';line='Waiting for the first check';sub='This page cannot see how often checks run yet.';}
  var none=!cov.total;
  var tail=(none&&!/team inbox/i.test(sub))?' There are no team inboxes listed yet.':'';
  var key=cls+'|'+line;                       // verdict changes are announced, repeats are not
- if(key!==lastVerdict){lastVerdict=key;face.textContent=symbol;t.textContent=line;}
+ if(key!==lastVerdict){lastVerdict=key;paintFace(icon);t.textContent=line;}
  hero.className='card hero '+cls;
  setText('hero-s',sub+tail);
 }
@@ -1421,7 +1427,7 @@ function netDown(e,kind){
  var sub=auth?(token?'Sinka answered, but it would not show its numbers to this tab. Paste the private token again in step 1 below, then refresh.'
   :'Sinka answered, but it will not show its numbers without the private token for this dashboard. Paste it in step 1 below: this page keeps it in this tab only, never on disk.')
   :'This page cannot talk to Sinka, so nothing below is moving: these are the numbers from the last time it answered. It keeps trying every '+REFRESH_SECS+' seconds.';
- if(t&&s&&t.textContent!==line){if(face)face.textContent='\u2715';t.textContent=line;s.textContent=sub;}
+ if(t&&s&&t.textContent!==line){paintFace('err');t.textContent=line;s.textContent=sub;}
  lastVerdict='down';
  setFrozen(true);
  var dot=el('srcdot');if(dot){dot.classList.remove('idle');dot.classList.add('dead');}
@@ -1440,7 +1446,7 @@ function renderBug(e){
  var why=str(e&&e.message)||str(e)||'unknown error';
  var hero=el('hero');if(hero)hero.className='card hero warn';
  var face=el('hero-face'),t=el('hero-t'),s=el('hero-s'),line='This page could not draw the numbers';
- if(t&&t.textContent!==line){if(face)face.textContent='\u25d0';t.textContent=line;s.textContent='Sinka answered, so the service is fine. This page hit its own bug while drawing the reply and shows nothing new; the numbers below are the last ones it managed to draw.';}
+ if(t&&t.textContent!==line){paintFace('warn');t.textContent=line;s.textContent='Sinka answered, so the service is fine. This page hit its own bug while drawing the reply and shows nothing new; the numbers below are the last ones it managed to draw.';}
  lastVerdict='bug';
  setText('cd-note','Redraws these numbers only. The last redraw failed inside this page, not in Sinka.');
  renderAlerts(['<div class="alert warn"><b>This page hit its own bug.</b> Sinka answered, so the service is fine, but the dashboard could not draw the reply. Nothing is frozen: the next redraw tries again. Details: <code>'+h(why)+'</code></div>']);
